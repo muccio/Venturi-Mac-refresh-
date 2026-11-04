@@ -5,9 +5,10 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::hash::Hasher;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::grade::{GradePreset, GradeTracks, GradeValue};
 use crate::stable_hash::StableHasher;
@@ -1117,6 +1118,7 @@ pub enum FilterKind {
     GaussianBlur,
     Exposure,
     DropShadow,
+    Shadertoy,
 }
 
 impl FilterKind {
@@ -1133,6 +1135,11 @@ impl FilterKind {
     /// Whether `ClipFilter::grade` applies to it.
     pub fn has_grade(self) -> bool {
         self == Self::ColorCorrection
+    }
+
+    /// Whether `ClipFilter::shadertoy` applies to it.
+    pub fn is_shadertoy(self) -> bool {
+        self == Self::Shadertoy
     }
 }
 
@@ -1217,6 +1224,109 @@ impl Lerp for BlurDirection {
     }
 }
 
+static SHADER_INTERNER: LazyLock<Mutex<(Vec<String>, HashMap<String, u32>)>> =
+    LazyLock::new(|| Mutex::new((Vec::new(), HashMap::new())));
+
+/// Returns a compact numeric identifier for the given shader code, interning it.
+pub fn intern_shader(code: &str) -> u32 {
+    let mut guard = SHADER_INTERNER.lock().unwrap();
+    if let Some(&id) = guard.1.get(code) {
+        return id;
+    }
+    let id = guard.0.len() as u32;
+    guard.0.push(code.to_string());
+    guard.1.insert(code.to_string(), id);
+    id
+}
+
+/// Retrieves the shader code previously interned by `intern_shader`.
+pub fn get_shader(id: u32) -> Option<String> {
+    let guard = SHADER_INTERNER.lock().unwrap();
+    guard.0.get(id as usize).cloned()
+}
+
+/// Built-in presets for the Shadertoy GPU shader engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ShadertoyPreset {
+    Plasma,
+    CyberpunkGrid,
+    Raymarching,
+    RippleWarp,
+    CrtScanlines,
+    VhsGlitch,
+    AudioVisualizer,
+}
+
+impl ShadertoyPreset {
+    pub const ALL: [Self; 7] = [
+        Self::Plasma,
+        Self::CyberpunkGrid,
+        Self::Raymarching,
+        Self::RippleWarp,
+        Self::CrtScanlines,
+        Self::VhsGlitch,
+        Self::AudioVisualizer,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Plasma => "Plasma (2D)",
+            Self::CyberpunkGrid => "Cyberpunk Grid",
+            Self::Raymarching => "Raymarching 3D SDF",
+            Self::RippleWarp => "Ripple Warp",
+            Self::CrtScanlines => "CRT Scanlines",
+            Self::VhsGlitch => "VHS Glitch",
+            Self::AudioVisualizer => "Audio Visualizer",
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Plasma => crate::shadertoy_presets::PLASMA,
+            Self::CyberpunkGrid => crate::shadertoy_presets::CYBERPUNK_GRID,
+            Self::Raymarching => crate::shadertoy_presets::RAYMARCHING,
+            Self::RippleWarp => crate::shadertoy_presets::RIPPLE_WARP,
+            Self::CrtScanlines => crate::shadertoy_presets::CRT_SCANLINES,
+            Self::VhsGlitch => crate::shadertoy_presets::VHS_GLITCH,
+            Self::AudioVisualizer => crate::shadertoy_presets::AUDIO_VISUALIZER,
+        }
+    }
+}
+
+/// Parameters of the Shadertoy GPU shader engine filter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShadertoyParams {
+    pub code: String,
+    pub params: [Keyframed<f32>; 4],
+    pub speed: f32,
+    pub mouse: [f32; 4],
+}
+
+impl Default for ShadertoyParams {
+    fn default() -> Self {
+        Self {
+            code: ShadertoyPreset::Plasma.code().to_string(),
+            params: [
+                Keyframed::constant(1.0),
+                Keyframed::constant(0.0),
+                Keyframed::constant(0.0),
+                Keyframed::constant(0.0),
+            ],
+            speed: 1.0,
+            mouse: [0.0; 4],
+        }
+    }
+}
+
+/// Evaluated Shadertoy parameters at a given frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadertoyValue {
+    pub shader_id: u32,
+    pub params: [f32; 4],
+    pub speed: f32,
+    pub mouse: [f32; 4],
+}
+
 /// A filter applied to a clip. The order in the `Vec` of
 /// `EffectStack::filters` is the order of application, configurable
 /// by the user (several filters on the same clip, in a sequence they choose);
@@ -1241,6 +1351,9 @@ pub struct ClipFilter {
     pub grow: Keyframed<f32>,
     /// Drop shadow only.
     pub color: Rgba,
+    /// Shadertoy custom GPU shader parameters.
+    #[serde(default)]
+    pub shadertoy: Option<ShadertoyParams>,
 }
 
 /// `ClipFilter` as saved, older files included.
@@ -1262,6 +1375,8 @@ struct StoredClipFilter {
     grow: Keyframed<f32>,
     #[serde(default = "default_shadow_color")]
     color: Rgba,
+    #[serde(default)]
+    shadertoy: Option<ShadertoyParams>,
 }
 
 fn default_shadow_offset() -> [Keyframed<f32>; 2] {
@@ -1286,6 +1401,7 @@ enum StoredFilterKind {
     GaussianBlur,
     Exposure,
     DropShadow,
+    Shadertoy,
 }
 
 impl From<StoredClipFilter> for ClipFilter {
@@ -1300,6 +1416,7 @@ impl From<StoredClipFilter> for ClipFilter {
             StoredFilterKind::GaussianBlur => (FilterKind::GaussianBlur, stored.grade),
             StoredFilterKind::Exposure => (FilterKind::Exposure, stored.grade),
             StoredFilterKind::DropShadow => (FilterKind::DropShadow, stored.grade),
+            StoredFilterKind::Shadertoy => (FilterKind::Shadertoy, stored.grade),
         };
         Self {
             kind,
@@ -1311,6 +1428,7 @@ impl From<StoredClipFilter> for ClipFilter {
             offset: stored.offset,
             grow: stored.grow,
             color: stored.color,
+            shadertoy: stored.shadertoy,
         }
     }
 }
@@ -1330,6 +1448,7 @@ pub struct FilterValue {
     pub offset: [f32; 2],
     pub grow: f32,
     pub color: Rgba,
+    pub shadertoy: Option<ShadertoyValue>,
 }
 
 impl FilterValue {
@@ -1343,6 +1462,7 @@ impl FilterValue {
             offset: DEFAULT_SHADOW_OFFSET,
             grow: 0.0,
             color: Rgba::BLACK,
+            shadertoy: None,
         }
     }
 }
@@ -1356,6 +1476,11 @@ const fn default_amount(kind: FilterKind) -> f32 {
 
 impl ClipFilter {
     pub fn new(kind: FilterKind) -> Self {
+        let shadertoy = if kind == FilterKind::Shadertoy {
+            Some(ShadertoyParams::default())
+        } else {
+            None
+        };
         Self {
             kind,
             enabled: true,
@@ -1366,10 +1491,29 @@ impl ClipFilter {
             offset: default_shadow_offset(),
             grow: default_shadow_grow(),
             color: Rgba::BLACK,
+            shadertoy,
         }
     }
 
     pub fn value_at(&self, frame: FrameIdx) -> FilterValue {
+        let shadertoy = if self.kind == FilterKind::Shadertoy {
+            self.shadertoy.as_ref().map(|s| {
+                let shader_id = intern_shader(&s.code);
+                ShadertoyValue {
+                    shader_id,
+                    params: [
+                        s.params[0].value_at(frame),
+                        s.params[1].value_at(frame),
+                        s.params[2].value_at(frame),
+                        s.params[3].value_at(frame),
+                    ],
+                    speed: s.speed,
+                    mouse: s.mouse,
+                }
+            })
+        } else {
+            None
+        };
         FilterValue {
             kind: self.kind,
             radius: self.radius.value_at(frame),
@@ -1382,6 +1526,7 @@ impl ClipFilter {
             ],
             grow: self.grow.value_at(frame),
             color: self.color,
+            shadertoy,
         }
     }
 }
@@ -3396,3 +3541,7 @@ mod timeline_tests;
 #[cfg(test)]
 #[path = "tests/model_audio_effect.rs"]
 mod audio_effect_tests;
+
+#[cfg(test)]
+#[path = "tests/model_shadertoy.rs"]
+mod shadertoy_tests;

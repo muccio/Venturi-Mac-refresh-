@@ -153,6 +153,13 @@ fn rows(effects: &EffectStack) -> Vec<KeyframeTarget> {
                 }
             }
         }
+        if let Some(shadertoy) = &filter.shadertoy {
+            for (idx, track) in shadertoy.params.iter().enumerate() {
+                if !track.is_constant() {
+                    rows.push(KeyframeTarget::FilterParam(filter.kind, idx));
+                }
+            }
+        }
     }
     for (index, mask) in effects.masks.iter().enumerate() {
         for param in vv_core::MaskParam::ALL {
@@ -231,6 +238,11 @@ fn frames_of(effects: &EffectStack, target: KeyframeTarget) -> Vec<FrameIdx> {
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)
             .map(|f| f.grow.keyframes().iter().map(|k| k.0).collect())
             .unwrap_or_default(),
+        KeyframeTarget::FilterParam(kind, idx) => filter(effects, kind)
+            .and_then(|f| f.shadertoy.as_ref())
+            .and_then(|s| s.params.get(idx))
+            .map(|p| p.keyframes().iter().map(|k| k.0).collect())
+            .unwrap_or_default(),
         KeyframeTarget::Grade(param) => grade_track(effects, param)
             .map(|k| k.keyframes().iter().map(|k| k.0).collect())
             .unwrap_or_default(),
@@ -261,6 +273,9 @@ fn scalar_at(
             filter(effects, kind)?.offset[axis.index()].keyframe_at(frame)
         }
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)?.grow.keyframe_at(frame),
+        KeyframeTarget::FilterParam(kind, idx) => {
+            filter(effects, kind)?.shadertoy.as_ref()?.params.get(idx)?.keyframe_at(frame)
+        }
         KeyframeTarget::Grade(param) => grade_track(effects, param)?.keyframe_at(frame),
         KeyframeTarget::Mask(index, param) => mask_track(effects, index, param)?.keyframe_at(frame),
         KeyframeTarget::Color | KeyframeTarget::FilterDirection(_) | KeyframeTarget::Text => None,
@@ -286,6 +301,11 @@ fn scalar_keyframes(
             .unwrap_or_default(),
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)
             .map(|f| f.grow.keyframes().to_vec())
+            .unwrap_or_default(),
+        KeyframeTarget::FilterParam(kind, idx) => filter(effects, kind)
+            .and_then(|f| f.shadertoy.as_ref())
+            .and_then(|s| s.params.get(idx))
+            .map(|k| k.keyframes().to_vec())
             .unwrap_or_default(),
         KeyframeTarget::Grade(param) => grade_track(effects, param)
             .map(|k| k.keyframes().to_vec())
@@ -326,6 +346,9 @@ fn scalar_value_at(effects: &EffectStack, target: KeyframeTarget, frame: FrameId
             Some(filter(effects, kind)?.offset[axis.index()].value_at(frame))
         }
         KeyframeTarget::FilterGrow(kind) => Some(filter(effects, kind)?.grow.value_at(frame)),
+        KeyframeTarget::FilterParam(kind, idx) => {
+            Some(filter(effects, kind)?.shadertoy.as_ref()?.params.get(idx)?.value_at(frame))
+        }
         KeyframeTarget::Grade(param) => Some(grade_track(effects, param)?.value_at(frame)),
         KeyframeTarget::Mask(index, param) => {
             Some(mask_track(effects, index, param)?.value_at(frame))
@@ -386,6 +409,11 @@ fn target_label(target: KeyframeTarget) -> String {
             "{} {}",
             crate::timeline_ui::filter_label(kind),
             t!("props.grow")
+        ),
+        KeyframeTarget::FilterParam(kind, idx) => format!(
+            "{} Param {}",
+            crate::timeline_ui::filter_label(kind),
+            idx
         ),
         KeyframeTarget::Grade(param) => crate::grade_panel::grade_param_label(param),
         KeyframeTarget::Mask(index, param) => format!(
@@ -1090,6 +1118,9 @@ fn keyframe_value(target: KeyframeTarget, value: f32) -> vv_core::KeyframeValue 
             vv_core::KeyframeValue::FilterOffset(kind, axis, value)
         }
         KeyframeTarget::FilterGrow(kind) => vv_core::KeyframeValue::FilterGrow(kind, value),
+        KeyframeTarget::FilterParam(kind, idx) => {
+            vv_core::KeyframeValue::FilterParam(kind, idx, value)
+        }
         KeyframeTarget::Grade(param) => vv_core::KeyframeValue::Grade(param, value),
         KeyframeTarget::Mask(index, param) => vv_core::KeyframeValue::Mask(index, param, value),
         // Without a curve one does not get here: they are edited from the Properties panel.

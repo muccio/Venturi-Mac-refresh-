@@ -38,10 +38,14 @@ pub(crate) enum TargetParamChoice {
     CropBottom,
     BlurRadius,
     Exposure,
+    ShadertoyParam0,
+    ShadertoyParam1,
+    ShadertoyParam2,
+    ShadertoyParam3,
 }
 
 impl TargetParamChoice {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 17] = [
         Self::ZoomUniform,
         Self::ZoomX,
         Self::ZoomY,
@@ -55,6 +59,10 @@ impl TargetParamChoice {
         Self::CropBottom,
         Self::BlurRadius,
         Self::Exposure,
+        Self::ShadertoyParam0,
+        Self::ShadertoyParam1,
+        Self::ShadertoyParam2,
+        Self::ShadertoyParam3,
     ];
 
     pub fn label(self) -> &'static str {
@@ -72,6 +80,10 @@ impl TargetParamChoice {
             Self::CropBottom => "Crop Bottom",
             Self::BlurRadius => "Blur Radius",
             Self::Exposure => "Exposure Amount",
+            Self::ShadertoyParam0 => "Shadertoy Param 0",
+            Self::ShadertoyParam1 => "Shadertoy Param 1",
+            Self::ShadertoyParam2 => "Shadertoy Param 2",
+            Self::ShadertoyParam3 => "Shadertoy Param 3",
         }
     }
 
@@ -84,6 +96,10 @@ impl TargetParamChoice {
             Self::CropLeft | Self::CropRight | Self::CropTop | Self::CropBottom => (0.0, 150.0),
             Self::BlurRadius => (0.0, 25.0),
             Self::Exposure => (0.0, 2.5),
+            Self::ShadertoyParam0
+            | Self::ShadertoyParam1
+            | Self::ShadertoyParam2
+            | Self::ShadertoyParam3 => (0.0, 1.0),
         }
     }
 
@@ -105,6 +121,10 @@ impl TargetParamChoice {
             Self::CropBottom => vec![KeyframeTarget::TransformParam(TransformParam::CropBottom)],
             Self::BlurRadius => vec![KeyframeTarget::FilterRadius(FilterKind::GaussianBlur)],
             Self::Exposure => vec![KeyframeTarget::FilterAmount(FilterKind::Exposure)],
+            Self::ShadertoyParam0 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 0)],
+            Self::ShadertoyParam1 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 1)],
+            Self::ShadertoyParam2 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 2)],
+            Self::ShadertoyParam3 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 3)],
         }
     }
 }

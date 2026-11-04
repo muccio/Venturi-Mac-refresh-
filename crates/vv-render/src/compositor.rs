@@ -171,7 +171,8 @@ fn filter_shader_id(kind: vv_core::FilterKind) -> f32 {
         vv_core::FilterKind::Exposure => 2.0,
         vv_core::FilterKind::BoxBlur
         | vv_core::FilterKind::GaussianBlur
-        | vv_core::FilterKind::DropShadow => 0.0,
+        | vv_core::FilterKind::DropShadow
+        | vv_core::FilterKind::Shadertoy => 0.0,
     }
 }
 
@@ -381,11 +382,16 @@ enum Fill {
 /// Pixel resolution of the produced texture and the logical one of the
 /// timeline, in which position and anchor are expressed. They coincide
 /// on export; the preview composes at the resolution of the decoded frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OutputFrame {
     pub width: u32,
     pub height: u32,
     pub timeline_size: (u32, u32),
+    pub time_secs: f32,
+    pub frame_idx: i64,
+    pub fps: f32,
+    pub audio: [f32; 4],
+    pub beat: f32,
 }
 
 impl OutputFrame {
@@ -395,6 +401,11 @@ impl OutputFrame {
             width,
             height,
             timeline_size: (width, height),
+            time_secs: 0.0,
+            frame_idx: 0,
+            fps: 24.0,
+            audio: [0.0; 4],
+            beat: 0.0,
         }
     }
 
@@ -405,6 +416,30 @@ impl OutputFrame {
             width,
             height,
             timeline_size,
+            time_secs: 0.0,
+            frame_idx: 0,
+            fps: 24.0,
+            audio: [0.0; 4],
+            beat: 0.0,
+        }
+    }
+
+    /// Sets the playback time, frame, and fps for time-reactive shaders.
+    pub fn with_time(self, time_secs: f32, frame_idx: i64, fps: f32) -> Self {
+        Self {
+            time_secs,
+            frame_idx,
+            fps,
+            ..self
+        }
+    }
+
+    /// Sets the live audio levels [rms, bass, mids, treble] and beat transient for audio-reactive shaders.
+    pub fn with_audio(self, audio: [f32; 4], beat: f32) -> Self {
+        Self {
+            audio,
+            beat,
+            ..self
         }
     }
 
@@ -861,6 +896,7 @@ pub struct Compositor {
     adapter_name: String,
     /// Built on first use: most projects never need it.
     smooth_cut: std::sync::OnceLock<crate::smooth_cut::SmoothCut>,
+    pub shadertoy: crate::shadertoy::ShadertoyRunner,
 }
 
 #[derive(Default)]
@@ -1105,6 +1141,7 @@ impl Compositor {
             cache: None,
         });
 
+        let shadertoy = crate::shadertoy::ShadertoyRunner::new(&device, work.format);
         let compositor = Self {
             device,
             queue,
@@ -1119,6 +1156,7 @@ impl Compositor {
             scratch: Arc::default(),
             adapter_name,
             smooth_cut: std::sync::OnceLock::new(),
+            shadertoy,
         };
         compositor.log_work_format();
         compositor
@@ -1697,6 +1735,73 @@ impl Compositor {
             self.compose_layer(rec, target, target_view, &composed, output, clear, first);
             rec.scratch.push(Some(alone));
             return;
+        }
+        if let Some(st_filter) = filters.iter().find(|f| f.kind == vv_core::FilterKind::Shadertoy) {
+            if let Some(st_val) = st_filter.shadertoy {
+                let code = vv_core::get_shader(st_val.shader_id)
+                    .unwrap_or_else(|| vv_core::ShadertoyPreset::Plasma.code().to_string());
+                let unshaded: Vec<_> = filters
+                    .iter()
+                    .filter(|f| f.kind != vv_core::FilterKind::Shadertoy)
+                    .copied()
+                    .collect();
+                let alone = self.scratch_texture(output.width, output.height);
+                let alone_view = alone.create_view(&wgpu::TextureViewDescriptor::default());
+                self.compose_layer(
+                    rec,
+                    &alone,
+                    &alone_view,
+                    &Layer {
+                        filters: &unshaded,
+                        blend: BlendMode::Normal,
+                        ..*layer
+                    },
+                    output,
+                    TRANSPARENT,
+                    &mut true,
+                );
+
+                let st_out = self.scratch_texture(output.width, output.height);
+                let st_out_view = st_out.create_view(&wgpu::TextureViewDescriptor::default());
+
+                let uniforms = crate::shadertoy::ShadertoyUniforms::new(
+                    output.width,
+                    output.height,
+                    output.time_secs * st_val.speed,
+                    output.frame_idx,
+                    output.fps,
+                    st_val.mouse,
+                    output.audio,
+                    output.beat,
+                    st_val.params,
+                );
+
+                self.shadertoy.render(
+                    &self.device,
+                    &mut rec.encoder,
+                    &st_out_view,
+                    &alone_view,
+                    st_val.shader_id,
+                    &code,
+                    &uniforms,
+                );
+
+                rec.scratch.push(Some(alone));
+
+                let composed = Layer {
+                    blend,
+                    ..Layer::new(
+                        LayerContent::Texture {
+                            texture: &st_out,
+                            source_size: output.timeline_size,
+                        },
+                        Transform::default(),
+                    )
+                };
+                self.compose_layer(rec, target, target_view, &composed, output, clear, first);
+                rec.scratch.push(Some(st_out));
+                return;
+            }
         }
         // Background and text are distinct passes: blended or faded one by
         // one, the background would show through the text.

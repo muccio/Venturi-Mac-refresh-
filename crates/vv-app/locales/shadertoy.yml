@@ -1,0 +1,57 @@
+_version: 2
+
+filter.shadertoy:
+  en: "Shadertoy Shader"
+  it: "Shader Shadertoy"
+
+props.shadertoy:
+  en: "Shadertoy GPU Shader"
+  it: "Shader GPU Shadertoy"
+
+props.shadertoy_preset:
+  en: "Preset"
+  it: "Preset"
+
+props.shadertoy_code:
+  en: "Shader Code (WGSL / GLSL)"
+  it: "Codice Shader (WGSL / GLSL)"
+
+props.shadertoy_status_ok:
+  en: "Shader Valid"
+  it: "Shader Valido"
+
+props.shadertoy_speed:
+  en: "Speed"
+  it: "Velocità"
+
+props.shadertoy_param0:
+  en: "Param 0"
+  it: "Param 0"
+
+props.shadertoy_param1:
+  en: "Param 1"
+  it: "Param 1"
+
+props.shadertoy_param2:
+  en: "Param 2"
+  it: "Param 2"
+
+props.shadertoy_param3:
+  en: "Param 3"
+  it: "Param 3"
+
+audio_envelope.target_st_param0:
+  en: "Shadertoy Param 0"
+  it: "Parametro 0 Shadertoy"
+
+audio_envelope.target_st_param1:
+  en: "Shadertoy Param 1"
+  it: "Parametro 1 Shadertoy"
+
+audio_envelope.target_st_param2:
+  en: "Shadertoy Param 2"
+  it: "Parametro 2 Shadertoy"
+
+audio_envelope.target_st_param3:
+  en: "Shadertoy Param 3"
+  it: "Parametro 3 Shadertoy"

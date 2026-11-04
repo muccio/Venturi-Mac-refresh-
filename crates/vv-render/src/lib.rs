@@ -3,6 +3,7 @@
 
 pub mod compositor;
 pub mod scopes;
+pub mod shadertoy;
 mod smooth_cut;
 pub mod text;
 
@@ -11,6 +12,7 @@ pub use compositor::{
     device_limits, fit_output_size,
 };
 pub use scopes::{ScopeKind, Scopes};
+pub use shadertoy::{ShadertoyRunner, ShadertoyUniforms};
 /// Re-exported: whoever owns a texture for `LayerContent::Texture` must use the
 /// same wgpu version as the compositor.
 pub use wgpu;

@@ -1522,6 +1522,19 @@ impl VenturiApp {
                     grow: f.grow.value_at(frame),
                     grow_key: RowKeyframe::of(&f.grow, frame, in_clip),
                     color: f.color,
+                    shadertoy: f.shadertoy.clone(),
+                    shadertoy_params: f.shadertoy.as_ref().map_or([0.0; 4], |s| [
+                        s.params[0].value_at(frame),
+                        s.params[1].value_at(frame),
+                        s.params[2].value_at(frame),
+                        s.params[3].value_at(frame),
+                    ]),
+                    shadertoy_keys: f.shadertoy.as_ref().map_or([RowKeyframe::NONE; 4], |s| [
+                        RowKeyframe::of(&s.params[0], frame, in_clip),
+                        RowKeyframe::of(&s.params[1], frame, in_clip),
+                        RowKeyframe::of(&s.params[2], frame, in_clip),
+                        RowKeyframe::of(&s.params[3], frame, in_clip),
+                    ]),
                 })
                 .collect(),
             blend_mode: clip.effects.blend_mode,
@@ -2250,6 +2263,8 @@ impl VenturiApp {
                                                     let mut reset_grow = reset;
                                                     let mut reset_color = reset;
                                                     let mut new_color = None;
+                                                    let mut new_shadertoy_code: Option<String> = None;
+                                                    let mut new_shadertoy_speed: Option<f32> = None;
                                                     let mut keyframes: Vec<(KeyframeEdit, vv_core::KeyframeTarget)> = Vec::new();
                                                     let mut goto = None;
                                                     if kind.has_amount() {
@@ -2365,6 +2380,75 @@ impl VenturiApp {
                                                             goto = goto.or(row.goto);
                                                         }
                                                     }
+                                                    if kind == vv_core::FilterKind::Shadertoy {
+                                                        if let Some(st) = &filter.shadertoy {
+                                                            let mut chosen_preset = None;
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(t!("props.shadertoy_preset"));
+                                                                egui::ComboBox::from_id_salt(format!("st_preset_{kind:?}"))
+                                                                    .selected_text(t!("props.shadertoy_preset"))
+                                                                    .show_ui(ui, |ui| {
+                                                                        for preset in vv_core::ShadertoyPreset::ALL {
+                                                                            if ui.selectable_label(false, preset.label()).clicked() {
+                                                                                chosen_preset = Some(preset);
+                                                                            }
+                                                                        }
+                                                                    });
+                                                            });
+                                                            if let Some(preset) = chosen_preset {
+                                                                new_shadertoy_code = Some(preset.code().to_string());
+                                                            }
+
+                                                            let mut speed = st.speed;
+                                                            let speed_row = param_row(ui, &t!("props.shadertoy_speed"), None, |ui| {
+                                                                slider_field(ui, &mut speed, 0.0..=5.0, 0.05, 2)
+                                                            });
+                                                            if speed_row.changed {
+                                                                new_shadertoy_speed = Some(speed);
+                                                            }
+
+                                                            ui.add_space(4.0);
+                                                            ui.label(t!("props.shadertoy_code"));
+                                                            let mut code_buf = new_shadertoy_code.clone().unwrap_or_else(|| st.code.clone());
+                                                            let code_response = ui.add(
+                                                                egui::TextEdit::multiline(&mut code_buf)
+                                                                    .font(egui::TextStyle::Monospace)
+                                                                    .code_editor()
+                                                                    .desired_rows(6)
+                                                                    .desired_width(ui.available_width()),
+                                                            );
+                                                            if code_response.changed() {
+                                                                new_shadertoy_code = Some(code_buf);
+                                                            }
+
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(egui::RichText::new("✔ ").color(egui::Color32::from_rgb(80, 220, 100)));
+                                                                ui.label(egui::RichText::new(t!("props.shadertoy_status_ok")).weak());
+                                                            });
+
+                                                            for idx in 0..4 {
+                                                                let label = match idx {
+                                                                    0 => t!("props.shadertoy_param0"),
+                                                                    1 => t!("props.shadertoy_param1"),
+                                                                    2 => t!("props.shadertoy_param2"),
+                                                                    _ => t!("props.shadertoy_param3"),
+                                                                };
+                                                                let mut val = filter.shadertoy_params[idx];
+                                                                let key = filter.shadertoy_keys[idx];
+                                                                let row = param_row(ui, &label, Some(key), |ui| {
+                                                                    slider_field(ui, &mut val, 0.0..=1.0, 0.01, 2)
+                                                                });
+                                                                let target = vv_core::KeyframeTarget::FilterParam(kind, idx);
+                                                                if row.changed {
+                                                                    keyframes.push((KeyframeEdit::Set(vv_core::KeyframeValue::FilterParam(kind, idx, val)), target));
+                                                                }
+                                                                if row.toggled_keyframe {
+                                                                    keyframes.push((KeyframeEdit::Toggle(key.on_keyframe), target));
+                                                                }
+                                                                goto = goto.or(row.goto);
+                                                            }
+                                                        }
+                                                    }
                                                     if kind.has_grade() {
                                                         if self.settings.panels.color_window_open {
                                                             ui.label(egui::RichText::new(t!("color.in_window")).weak());
@@ -2396,6 +2480,8 @@ impl VenturiApp {
                                                         && !reset_grow
                                                         && !reset_color
                                                         && new_color.is_none()
+                                                        && new_shadertoy_code.is_none()
+                                                        && new_shadertoy_speed.is_none()
                                                         && keyframes.is_empty()
                                                         && enabled == filter.enabled
                                                     {
@@ -2440,6 +2526,19 @@ impl VenturiApp {
                                                         if let Some(color) = new_color {
                                                             own.color = color;
                                                         }
+                                                        if let Some(code) = &new_shadertoy_code {
+                                                            if let Some(s) = &mut own.shadertoy {
+                                                                s.code = code.clone();
+                                                            }
+                                                        }
+                                                        if let Some(speed) = new_shadertoy_speed {
+                                                            if let Some(s) = &mut own.shadertoy {
+                                                                s.speed = speed;
+                                                            }
+                                                        }
+                                                        if reset {
+                                                            own.shadertoy = defaults.shadertoy;
+                                                        }
                                                         let mut pending_keyframes = Vec::new();
                                                         for (edit, target) in &keyframes {
                                                             let own = &mut new_filters[pos];
@@ -2460,6 +2559,15 @@ impl VenturiApp {
                                                                 KeyframeEdit::Set(vv_core::KeyframeValue::FilterGrow(_, v)) if own.grow.is_constant() => {
                                                                     own.grow.default = v;
                                                                 }
+                                                                KeyframeEdit::Set(vv_core::KeyframeValue::FilterParam(_, idx, v)) => {
+                                                                    if let Some(s) = &mut own.shadertoy {
+                                                                        if s.params[idx].is_constant() {
+                                                                            s.params[idx].default = v;
+                                                                        } else {
+                                                                            pending_keyframes.push(upsert_keyframe(clip_ref, t.source_frame, vv_core::KeyframeValue::FilterParam(kind, idx, v)));
+                                                                        }
+                                                                    }
+                                                                }
                                                                 KeyframeEdit::Set(value) => {
                                                                     pending_keyframes.push(upsert_keyframe(clip_ref, t.source_frame, value));
                                                                 }
@@ -2479,6 +2587,10 @@ impl VenturiApp {
                                                                         }
                                                                         vv_core::KeyframeTarget::FilterGrow(_) => {
                                                                             vv_core::KeyframeValue::FilterGrow(kind, own.grow.value_at(t.source_frame))
+                                                                        }
+                                                                        vv_core::KeyframeTarget::FilterParam(_, idx) => {
+                                                                            let val = own.shadertoy.as_ref().map_or(0.0, |s| s.params[*idx].value_at(t.source_frame));
+                                                                            vv_core::KeyframeValue::FilterParam(kind, *idx, val)
                                                                         }
                                                                         _ => vv_core::KeyframeValue::FilterDirection(kind, own.direction.value_at(t.source_frame)),
                                                                     };

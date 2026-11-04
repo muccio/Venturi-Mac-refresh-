@@ -236,6 +236,9 @@ struct FilterPanelInfo {
     grow: f32,
     grow_key: RowKeyframe,
     color: vv_core::Rgba,
+    shadertoy: Option<vv_core::ShadertoyParams>,
+    shadertoy_params: [f32; 4],
+    shadertoy_keys: [RowKeyframe; 4],
 }
 
 /// A clip's track composed by itself, for the auto balance: a
