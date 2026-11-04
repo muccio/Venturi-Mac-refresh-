@@ -239,6 +239,9 @@ struct FilterPanelInfo {
     shadertoy: Option<vv_core::ShadertoyParams>,
     shadertoy_params: [f32; 4],
     shadertoy_keys: [RowKeyframe; 4],
+    p5: Option<vv_core::P5Params>,
+    p5_params: [f32; 4],
+    p5_keys: [RowKeyframe; 4],
 }
 
 /// A clip's track composed by itself, for the auto balance: a

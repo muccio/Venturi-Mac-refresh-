@@ -1119,6 +1119,7 @@ pub enum FilterKind {
     Exposure,
     DropShadow,
     Shadertoy,
+    P5Canvas,
 }
 
 impl FilterKind {
@@ -1140,6 +1141,11 @@ impl FilterKind {
     /// Whether `ClipFilter::shadertoy` applies to it.
     pub fn is_shadertoy(self) -> bool {
         self == Self::Shadertoy
+    }
+
+    /// Whether `ClipFilter::p5` applies to it.
+    pub fn is_p5(self) -> bool {
+        self == Self::P5Canvas
     }
 }
 
@@ -1327,6 +1333,142 @@ pub struct ShadertoyValue {
     pub mouse: [f32; 4],
 }
 
+/// Global interned P5 script store.
+static P5_SCRIPT_INTERNER: LazyLock<Mutex<(Vec<String>, HashMap<String, u32>)>> =
+    LazyLock::new(|| Mutex::new((Vec::new(), HashMap::new())));
+
+/// Interns a P5 script string, returning a stable numeric identifier.
+pub fn intern_p5_script(code: &str) -> u32 {
+    let mut guard = P5_SCRIPT_INTERNER.lock().unwrap();
+    if let Some(&id) = guard.1.get(code) {
+        return id;
+    }
+    let id = guard.0.len() as u32;
+    guard.0.push(code.to_string());
+    guard.1.insert(code.to_string(), id);
+    id
+}
+
+/// Retrieves the P5 script previously interned by `intern_p5_script`.
+pub fn get_p5_script(id: u32) -> Option<String> {
+    let guard = P5_SCRIPT_INTERNER.lock().unwrap();
+    guard.0.get(id as usize).cloned()
+}
+
+/// Built-in presets for the P5.js creative coding canvas filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum P5Preset {
+    #[default]
+    AsciiColor,
+    AsciiMono,
+    ParticleSampler,
+    WaveMatrix,
+    SpectrumRings,
+    GlitchPixelSort,
+    Custom,
+}
+
+impl P5Preset {
+    pub const ALL: [Self; 7] = [
+        Self::AsciiColor,
+        Self::AsciiMono,
+        Self::ParticleSampler,
+        Self::WaveMatrix,
+        Self::SpectrumRings,
+        Self::GlitchPixelSort,
+        Self::Custom,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::AsciiColor => "ASCII Art (Full Color)",
+            Self::AsciiMono => "ASCII Art (Monochrome B&W)",
+            Self::ParticleSampler => "Particle Video Sampler",
+            Self::WaveMatrix => "Generative Wave Matrix",
+            Self::SpectrumRings => "Audio Spectrum Rings",
+            Self::GlitchPixelSort => "Glitch Pixel Sorter",
+            Self::Custom => "Custom Sketch",
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::AsciiColor => crate::p5_presets::ASCII_COLOR,
+            Self::AsciiMono => crate::p5_presets::ASCII_MONO,
+            Self::ParticleSampler => crate::p5_presets::PARTICLE_SAMPLER,
+            Self::WaveMatrix => crate::p5_presets::WAVE_MATRIX,
+            Self::SpectrumRings => crate::p5_presets::SPECTRUM_RINGS,
+            Self::GlitchPixelSort => crate::p5_presets::GLITCH_PIXEL_SORT,
+            Self::Custom => crate::p5_presets::ASCII_COLOR,
+        }
+    }
+}
+
+/// Blend modes supported when compositing P5.js canvas output over video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum P5BlendMode {
+    #[default]
+    Normal,
+    Add,
+    Screen,
+    Multiply,
+    Overlay,
+}
+
+impl P5BlendMode {
+    pub const ALL: [Self; 5] = [
+        Self::Normal,
+        Self::Add,
+        Self::Screen,
+        Self::Multiply,
+        Self::Overlay,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "Normal",
+            Self::Add => "Add",
+            Self::Screen => "Screen",
+            Self::Multiply => "Multiply",
+            Self::Overlay => "Overlay",
+        }
+    }
+}
+
+/// Parameters of the P5.js creative coding canvas filter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct P5Params {
+    pub preset: P5Preset,
+    pub code: String,
+    pub params: [Keyframed<f32>; 4],
+    pub blend_mode: P5BlendMode,
+}
+
+impl Default for P5Params {
+    fn default() -> Self {
+        Self {
+            preset: P5Preset::AsciiColor,
+            code: P5Preset::AsciiColor.code().to_string(),
+            params: [
+                Keyframed::constant(0.5),
+                Keyframed::constant(0.5),
+                Keyframed::constant(0.5),
+                Keyframed::constant(0.5),
+            ],
+            blend_mode: P5BlendMode::Normal,
+        }
+    }
+}
+
+/// Evaluated P5.js parameters at a given frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct P5Value {
+    pub preset: P5Preset,
+    pub script_id: u32,
+    pub params: [f32; 4],
+    pub blend_mode: P5BlendMode,
+}
+
 /// A filter applied to a clip. The order in the `Vec` of
 /// `EffectStack::filters` is the order of application, configurable
 /// by the user (several filters on the same clip, in a sequence they choose);
@@ -1354,6 +1496,9 @@ pub struct ClipFilter {
     /// Shadertoy custom GPU shader parameters.
     #[serde(default)]
     pub shadertoy: Option<ShadertoyParams>,
+    /// P5.js creative coding canvas parameters.
+    #[serde(default)]
+    pub p5: Option<P5Params>,
 }
 
 /// `ClipFilter` as saved, older files included.
@@ -1377,6 +1522,8 @@ struct StoredClipFilter {
     color: Rgba,
     #[serde(default)]
     shadertoy: Option<ShadertoyParams>,
+    #[serde(default)]
+    p5: Option<P5Params>,
 }
 
 fn default_shadow_offset() -> [Keyframed<f32>; 2] {
@@ -1402,6 +1549,7 @@ enum StoredFilterKind {
     Exposure,
     DropShadow,
     Shadertoy,
+    P5Canvas,
 }
 
 impl From<StoredClipFilter> for ClipFilter {
@@ -1417,6 +1565,7 @@ impl From<StoredClipFilter> for ClipFilter {
             StoredFilterKind::Exposure => (FilterKind::Exposure, stored.grade),
             StoredFilterKind::DropShadow => (FilterKind::DropShadow, stored.grade),
             StoredFilterKind::Shadertoy => (FilterKind::Shadertoy, stored.grade),
+            StoredFilterKind::P5Canvas => (FilterKind::P5Canvas, stored.grade),
         };
         Self {
             kind,
@@ -1429,6 +1578,7 @@ impl From<StoredClipFilter> for ClipFilter {
             grow: stored.grow,
             color: stored.color,
             shadertoy: stored.shadertoy,
+            p5: stored.p5,
         }
     }
 }
@@ -1449,6 +1599,7 @@ pub struct FilterValue {
     pub grow: f32,
     pub color: Rgba,
     pub shadertoy: Option<ShadertoyValue>,
+    pub p5: Option<P5Value>,
 }
 
 impl FilterValue {
@@ -1463,6 +1614,7 @@ impl FilterValue {
             grow: 0.0,
             color: Rgba::BLACK,
             shadertoy: None,
+            p5: None,
         }
     }
 }
@@ -1481,6 +1633,11 @@ impl ClipFilter {
         } else {
             None
         };
+        let p5 = if kind == FilterKind::P5Canvas {
+            Some(P5Params::default())
+        } else {
+            None
+        };
         Self {
             kind,
             enabled: true,
@@ -1492,6 +1649,7 @@ impl ClipFilter {
             grow: default_shadow_grow(),
             color: Rgba::BLACK,
             shadertoy,
+            p5,
         }
     }
 
@@ -1514,6 +1672,24 @@ impl ClipFilter {
         } else {
             None
         };
+        let p5 = if self.kind == FilterKind::P5Canvas {
+            self.p5.as_ref().map(|p| {
+                let script_id = intern_p5_script(&p.code);
+                P5Value {
+                    preset: p.preset,
+                    script_id,
+                    params: [
+                        p.params[0].value_at(frame),
+                        p.params[1].value_at(frame),
+                        p.params[2].value_at(frame),
+                        p.params[3].value_at(frame),
+                    ],
+                    blend_mode: p.blend_mode,
+                }
+            })
+        } else {
+            None
+        };
         FilterValue {
             kind: self.kind,
             radius: self.radius.value_at(frame),
@@ -1527,6 +1703,7 @@ impl ClipFilter {
             grow: self.grow.value_at(frame),
             color: self.color,
             shadertoy,
+            p5,
         }
     }
 }
@@ -3545,3 +3722,7 @@ mod audio_effect_tests;
 #[cfg(test)]
 #[path = "tests/model_shadertoy.rs"]
 mod shadertoy_tests;
+
+#[cfg(test)]
+#[path = "tests/model_p5.rs"]
+mod p5_tests;

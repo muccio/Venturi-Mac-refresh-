@@ -160,6 +160,13 @@ fn rows(effects: &EffectStack) -> Vec<KeyframeTarget> {
                 }
             }
         }
+        if let Some(p5) = &filter.p5 {
+            for (idx, track) in p5.params.iter().enumerate() {
+                if !track.is_constant() {
+                    rows.push(KeyframeTarget::FilterParam(filter.kind, idx));
+                }
+            }
+        }
     }
     for (index, mask) in effects.masks.iter().enumerate() {
         for param in vv_core::MaskParam::ALL {
@@ -201,6 +208,21 @@ fn grade_track(
     )
 }
 
+fn filter_param_track(
+    effects: &EffectStack,
+    kind: vv_core::FilterKind,
+    idx: usize,
+) -> Option<&vv_core::Keyframed<f32>> {
+    let f = filter(effects, kind)?;
+    if let Some(s) = &f.shadertoy {
+        s.params.get(idx)
+    } else if let Some(p) = &f.p5 {
+        p.params.get(idx)
+    } else {
+        None
+    }
+}
+
 /// The frames of the keyframes of a row.
 fn frames_of(effects: &EffectStack, target: KeyframeTarget) -> Vec<FrameIdx> {
     match target {
@@ -238,9 +260,7 @@ fn frames_of(effects: &EffectStack, target: KeyframeTarget) -> Vec<FrameIdx> {
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)
             .map(|f| f.grow.keyframes().iter().map(|k| k.0).collect())
             .unwrap_or_default(),
-        KeyframeTarget::FilterParam(kind, idx) => filter(effects, kind)
-            .and_then(|f| f.shadertoy.as_ref())
-            .and_then(|s| s.params.get(idx))
+        KeyframeTarget::FilterParam(kind, idx) => filter_param_track(effects, kind, idx)
             .map(|p| p.keyframes().iter().map(|k| k.0).collect())
             .unwrap_or_default(),
         KeyframeTarget::Grade(param) => grade_track(effects, param)
@@ -274,7 +294,7 @@ fn scalar_at(
         }
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)?.grow.keyframe_at(frame),
         KeyframeTarget::FilterParam(kind, idx) => {
-            filter(effects, kind)?.shadertoy.as_ref()?.params.get(idx)?.keyframe_at(frame)
+            filter_param_track(effects, kind, idx)?.keyframe_at(frame)
         }
         KeyframeTarget::Grade(param) => grade_track(effects, param)?.keyframe_at(frame),
         KeyframeTarget::Mask(index, param) => mask_track(effects, index, param)?.keyframe_at(frame),
@@ -302,9 +322,7 @@ fn scalar_keyframes(
         KeyframeTarget::FilterGrow(kind) => filter(effects, kind)
             .map(|f| f.grow.keyframes().to_vec())
             .unwrap_or_default(),
-        KeyframeTarget::FilterParam(kind, idx) => filter(effects, kind)
-            .and_then(|f| f.shadertoy.as_ref())
-            .and_then(|s| s.params.get(idx))
+        KeyframeTarget::FilterParam(kind, idx) => filter_param_track(effects, kind, idx)
             .map(|k| k.keyframes().to_vec())
             .unwrap_or_default(),
         KeyframeTarget::Grade(param) => grade_track(effects, param)
@@ -347,7 +365,7 @@ fn scalar_value_at(effects: &EffectStack, target: KeyframeTarget, frame: FrameId
         }
         KeyframeTarget::FilterGrow(kind) => Some(filter(effects, kind)?.grow.value_at(frame)),
         KeyframeTarget::FilterParam(kind, idx) => {
-            Some(filter(effects, kind)?.shadertoy.as_ref()?.params.get(idx)?.value_at(frame))
+            Some(filter_param_track(effects, kind, idx)?.value_at(frame))
         }
         KeyframeTarget::Grade(param) => Some(grade_track(effects, param)?.value_at(frame)),
         KeyframeTarget::Mask(index, param) => {

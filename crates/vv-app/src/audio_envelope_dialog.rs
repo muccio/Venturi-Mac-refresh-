@@ -42,10 +42,14 @@ pub(crate) enum TargetParamChoice {
     ShadertoyParam1,
     ShadertoyParam2,
     ShadertoyParam3,
+    P5Param0,
+    P5Param1,
+    P5Param2,
+    P5Param3,
 }
 
 impl TargetParamChoice {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 21] = [
         Self::ZoomUniform,
         Self::ZoomX,
         Self::ZoomY,
@@ -63,6 +67,10 @@ impl TargetParamChoice {
         Self::ShadertoyParam1,
         Self::ShadertoyParam2,
         Self::ShadertoyParam3,
+        Self::P5Param0,
+        Self::P5Param1,
+        Self::P5Param2,
+        Self::P5Param3,
     ];
 
     pub fn label(self) -> &'static str {
@@ -84,6 +92,10 @@ impl TargetParamChoice {
             Self::ShadertoyParam1 => "Shadertoy Param 1",
             Self::ShadertoyParam2 => "Shadertoy Param 2",
             Self::ShadertoyParam3 => "Shadertoy Param 3",
+            Self::P5Param0 => "P5.js Param 0",
+            Self::P5Param1 => "P5.js Param 1",
+            Self::P5Param2 => "P5.js Param 2",
+            Self::P5Param3 => "P5.js Param 3",
         }
     }
 
@@ -99,7 +111,11 @@ impl TargetParamChoice {
             Self::ShadertoyParam0
             | Self::ShadertoyParam1
             | Self::ShadertoyParam2
-            | Self::ShadertoyParam3 => (0.0, 1.0),
+            | Self::ShadertoyParam3
+            | Self::P5Param0
+            | Self::P5Param1
+            | Self::P5Param2
+            | Self::P5Param3 => (0.0, 1.0),
         }
     }
 
@@ -125,6 +141,10 @@ impl TargetParamChoice {
             Self::ShadertoyParam1 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 1)],
             Self::ShadertoyParam2 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 2)],
             Self::ShadertoyParam3 => vec![KeyframeTarget::FilterParam(FilterKind::Shadertoy, 3)],
+            Self::P5Param0 => vec![KeyframeTarget::FilterParam(FilterKind::P5Canvas, 0)],
+            Self::P5Param1 => vec![KeyframeTarget::FilterParam(FilterKind::P5Canvas, 1)],
+            Self::P5Param2 => vec![KeyframeTarget::FilterParam(FilterKind::P5Canvas, 2)],
+            Self::P5Param3 => vec![KeyframeTarget::FilterParam(FilterKind::P5Canvas, 3)],
         }
     }
 }

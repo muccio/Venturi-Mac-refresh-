@@ -9,6 +9,7 @@ pub mod model;
 pub mod otio;
 pub mod persistence;
 pub mod pool;
+pub mod p5_presets;
 pub mod shadertoy_presets;
 mod stable_hash;
 

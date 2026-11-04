@@ -172,7 +172,8 @@ fn filter_shader_id(kind: vv_core::FilterKind) -> f32 {
         vv_core::FilterKind::BoxBlur
         | vv_core::FilterKind::GaussianBlur
         | vv_core::FilterKind::DropShadow
-        | vv_core::FilterKind::Shadertoy => 0.0,
+        | vv_core::FilterKind::Shadertoy
+        | vv_core::FilterKind::P5Canvas => 0.0,
     }
 }
 
@@ -897,6 +898,7 @@ pub struct Compositor {
     /// Built on first use: most projects never need it.
     smooth_cut: std::sync::OnceLock<crate::smooth_cut::SmoothCut>,
     pub shadertoy: crate::shadertoy::ShadertoyRunner,
+    pub p5: crate::p5_canvas::P5Runner,
 }
 
 #[derive(Default)]
@@ -1142,6 +1144,7 @@ impl Compositor {
         });
 
         let shadertoy = crate::shadertoy::ShadertoyRunner::new(&device, work.format);
+        let p5 = crate::p5_canvas::P5Runner::new(&device, work.format);
         let compositor = Self {
             device,
             queue,
@@ -1157,6 +1160,7 @@ impl Compositor {
             adapter_name,
             smooth_cut: std::sync::OnceLock::new(),
             shadertoy,
+            p5,
         };
         compositor.log_work_format();
         compositor
@@ -1800,6 +1804,64 @@ impl Compositor {
                 };
                 self.compose_layer(rec, target, target_view, &composed, output, clear, first);
                 rec.scratch.push(Some(st_out));
+                return;
+            }
+        }
+        if let Some(p5_filter) = filters.iter().find(|f| f.kind == vv_core::FilterKind::P5Canvas) {
+            if let Some(p5_val) = p5_filter.p5 {
+                let unp5: Vec<_> = filters
+                    .iter()
+                    .filter(|f| f.kind != vv_core::FilterKind::P5Canvas)
+                    .copied()
+                    .collect();
+                let alone = self.scratch_texture(output.width, output.height);
+                let alone_view = alone.create_view(&wgpu::TextureViewDescriptor::default());
+                self.compose_layer(
+                    rec,
+                    &alone,
+                    &alone_view,
+                    &Layer {
+                        filters: &unp5,
+                        blend: BlendMode::Normal,
+                        ..*layer
+                    },
+                    output,
+                    TRANSPARENT,
+                    &mut true,
+                );
+
+                let p5_out = self.scratch_texture(output.width, output.height);
+                let p5_out_view = p5_out.create_view(&wgpu::TextureViewDescriptor::default());
+
+                self.p5.render(
+                    &self.device,
+                    &self.queue,
+                    &mut rec.encoder,
+                    &alone_view,
+                    &p5_out_view,
+                    output.width,
+                    output.height,
+                    output.time_secs,
+                    output.fps,
+                    p5_val,
+                    output.audio,
+                    output.beat,
+                );
+
+                rec.scratch.push(Some(alone));
+
+                let composed = Layer {
+                    blend,
+                    ..Layer::new(
+                        LayerContent::Texture {
+                            texture: &p5_out,
+                            source_size: output.timeline_size,
+                        },
+                        Transform::default(),
+                    )
+                };
+                self.compose_layer(rec, target, target_view, &composed, output, clear, first);
+                rec.scratch.push(Some(p5_out));
                 return;
             }
         }

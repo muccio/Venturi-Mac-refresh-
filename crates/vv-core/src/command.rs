@@ -2433,6 +2433,11 @@ pub fn target_track_mut(
                 .and_then(|f| f.shadertoy.as_mut())
                 .and_then(|s| s.params.get_mut(idx))
         }
+        KeyframeTarget::FilterParam(FilterKind::P5Canvas, idx) => {
+            filter_mut(effects, FilterKind::P5Canvas)
+                .and_then(|f| f.p5.as_mut())
+                .and_then(|p| p.params.get_mut(idx))
+        }
         KeyframeTarget::Grade(param) => grade_track_mut(effects, param),
         KeyframeTarget::Mask(index, param) => mask_track_mut(effects, index, param),
         _ => None,
@@ -2479,17 +2484,19 @@ fn take_keyframe(
         KeyframeTarget::FilterGrow(kind) => filter_mut(effects, kind)
             .and_then(|f| f.grow.remove_at(frame))
             .map(|(v, i)| (KeyframeValue::FilterGrow(kind, v), i)),
-        KeyframeTarget::FilterParam(kind, idx) => {
-            if kind == FilterKind::Shadertoy {
-                filter_mut(effects, kind)
-                    .and_then(|f| f.shadertoy.as_mut())
-                    .and_then(|s| s.params.get_mut(idx))
-                    .and_then(|t| t.remove_at(frame))
-                    .map(|(v, i)| (KeyframeValue::FilterParam(kind, idx, v), i))
-            } else {
-                None
-            }
-        }
+        KeyframeTarget::FilterParam(kind, idx) => match kind {
+            FilterKind::Shadertoy => filter_mut(effects, kind)
+                .and_then(|f| f.shadertoy.as_mut())
+                .and_then(|s| s.params.get_mut(idx))
+                .and_then(|t| t.remove_at(frame))
+                .map(|(v, i)| (KeyframeValue::FilterParam(kind, idx, v), i)),
+            FilterKind::P5Canvas => filter_mut(effects, kind)
+                .and_then(|f| f.p5.as_mut())
+                .and_then(|p| p.params.get_mut(idx))
+                .and_then(|t| t.remove_at(frame))
+                .map(|(v, i)| (KeyframeValue::FilterParam(kind, idx, v), i)),
+            _ => None,
+        },
         KeyframeTarget::Grade(param) => grade_track_mut(effects, param)
             .and_then(|k| k.remove_at(frame))
             .map(|(v, i)| (KeyframeValue::Grade(param, v), i)),
@@ -2548,8 +2555,8 @@ fn put_keyframe(
                 filter.grow.upsert(frame, v, interpolation);
             }
         }
-        KeyframeValue::FilterParam(kind, idx, v) => {
-            if kind == FilterKind::Shadertoy {
+        KeyframeValue::FilterParam(kind, idx, v) => match kind {
+            FilterKind::Shadertoy => {
                 if let Some(filter) = filter_mut(effects, kind)
                     && let Some(s) = filter.shadertoy.as_mut()
                     && let Some(param) = s.params.get_mut(idx)
@@ -2557,7 +2564,16 @@ fn put_keyframe(
                     param.upsert(frame, v, interpolation);
                 }
             }
-        }
+            FilterKind::P5Canvas => {
+                if let Some(filter) = filter_mut(effects, kind)
+                    && let Some(p) = filter.p5.as_mut()
+                    && let Some(param) = p.params.get_mut(idx)
+                {
+                    param.upsert(frame, v, interpolation);
+                }
+            }
+            _ => {}
+        },
         KeyframeValue::Grade(param, v) => {
             if let Some(track) = grade_track_mut(effects, param) {
                 track.upsert(frame, v, interpolation);
@@ -2605,16 +2621,17 @@ fn set_keyframe_interpolation(
         KeyframeTarget::FilterGrow(kind) => {
             filter_mut(effects, kind).and_then(|f| f.grow.set_interpolation(frame, interpolation))
         }
-        KeyframeTarget::FilterParam(kind, idx) => {
-            if kind == FilterKind::Shadertoy {
-                filter_mut(effects, kind)
-                    .and_then(|f| f.shadertoy.as_mut())
-                    .and_then(|s| s.params.get_mut(idx))
-                    .and_then(|t| t.set_interpolation(frame, interpolation))
-            } else {
-                None
-            }
-        }
+        KeyframeTarget::FilterParam(kind, idx) => match kind {
+            FilterKind::Shadertoy => filter_mut(effects, kind)
+                .and_then(|f| f.shadertoy.as_mut())
+                .and_then(|s| s.params.get_mut(idx))
+                .and_then(|t| t.set_interpolation(frame, interpolation)),
+            FilterKind::P5Canvas => filter_mut(effects, kind)
+                .and_then(|f| f.p5.as_mut())
+                .and_then(|p| p.params.get_mut(idx))
+                .and_then(|t| t.set_interpolation(frame, interpolation)),
+            _ => None,
+        },
         KeyframeTarget::Grade(param) => {
             grade_track_mut(effects, param).and_then(|k| k.set_interpolation(frame, interpolation))
         }

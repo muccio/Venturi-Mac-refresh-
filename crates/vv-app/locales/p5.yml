@@ -1,0 +1,49 @@
+_version: 2
+
+filter.p5:
+  en: "P5.js Canvas"
+  it: "Canvas P5.js"
+
+props.p5:
+  en: "P5.js Creative Canvas"
+  it: "Canvas Creativo P5.js"
+
+p5.title:
+  en: "P5.js Canvas"
+  it: "Canvas P5.js"
+
+p5.preset:
+  en: "Preset Sketch"
+  it: "Preset Sketch"
+
+p5.blend_mode:
+  en: "Blend Mode"
+  it: "Metodo di fusione"
+
+p5.code:
+  en: "JavaScript Sketch Code"
+  it: "Codice JavaScript Sketch"
+
+p5.reset_code:
+  en: "Reset to Preset"
+  it: "Reimposta al Preset"
+
+p5.audio_reactive:
+  en: "Audio Reactive (Envelope / FFT)"
+  it: "Reattivo all'Audio (Envelope / FFT)"
+
+p5.param0:
+  en: "Parameter 0"
+  it: "Parametro 0"
+
+p5.param1:
+  en: "Parameter 1"
+  it: "Parametro 1"
+
+p5.param2:
+  en: "Parameter 2"
+  it: "Parametro 2"
+
+p5.param3:
+  en: "Parameter 3"
+  it: "Parametro 3"

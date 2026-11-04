@@ -1535,6 +1535,19 @@ impl VenturiApp {
                         RowKeyframe::of(&s.params[2], frame, in_clip),
                         RowKeyframe::of(&s.params[3], frame, in_clip),
                     ]),
+                    p5: f.p5.clone(),
+                    p5_params: f.p5.as_ref().map_or([0.0; 4], |p| [
+                        p.params[0].value_at(frame),
+                        p.params[1].value_at(frame),
+                        p.params[2].value_at(frame),
+                        p.params[3].value_at(frame),
+                    ]),
+                    p5_keys: f.p5.as_ref().map_or([RowKeyframe::NONE; 4], |p| [
+                        RowKeyframe::of(&p.params[0], frame, in_clip),
+                        RowKeyframe::of(&p.params[1], frame, in_clip),
+                        RowKeyframe::of(&p.params[2], frame, in_clip),
+                        RowKeyframe::of(&p.params[3], frame, in_clip),
+                    ]),
                 })
                 .collect(),
             blend_mode: clip.effects.blend_mode,
@@ -2265,6 +2278,9 @@ impl VenturiApp {
                                                     let mut new_color = None;
                                                     let mut new_shadertoy_code: Option<String> = None;
                                                     let mut new_shadertoy_speed: Option<f32> = None;
+                                                    let mut new_p5_preset: Option<vv_core::P5Preset> = None;
+                                                    let mut new_p5_code: Option<String> = None;
+                                                    let mut new_p5_blend: Option<vv_core::P5BlendMode> = None;
                                                     let mut keyframes: Vec<(KeyframeEdit, vv_core::KeyframeTarget)> = Vec::new();
                                                     let mut goto = None;
                                                     if kind.has_amount() {
@@ -2449,6 +2465,83 @@ impl VenturiApp {
                                                             }
                                                         }
                                                     }
+                                                    if kind == vv_core::FilterKind::P5Canvas {
+                                                        if let Some(p5) = &filter.p5 {
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(t!("p5.preset"));
+                                                                egui::ComboBox::from_id_salt(format!("p5_preset_{kind:?}"))
+                                                                    .selected_text(p5.preset.label())
+                                                                    .show_ui(ui, |ui| {
+                                                                        for preset in vv_core::P5Preset::ALL {
+                                                                            if ui.selectable_label(p5.preset == preset, preset.label()).clicked() {
+                                                                                new_p5_preset = Some(preset);
+                                                                                new_p5_code = Some(preset.code().to_string());
+                                                                            }
+                                                                        }
+                                                                    });
+                                                            });
+
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(t!("p5.blend_mode"));
+                                                                egui::ComboBox::from_id_salt(format!("p5_blend_{kind:?}"))
+                                                                    .selected_text(p5.blend_mode.label())
+                                                                    .show_ui(ui, |ui| {
+                                                                        for mode in vv_core::P5BlendMode::ALL {
+                                                                            if ui.selectable_label(p5.blend_mode == mode, mode.label()).clicked() {
+                                                                                new_p5_blend = Some(mode);
+                                                                            }
+                                                                        }
+                                                                    });
+                                                            });
+
+                                                            ui.add_space(4.0);
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(t!("p5.code"));
+                                                                if ui.button(t!("p5.reset_code")).clicked() {
+                                                                    new_p5_code = Some(p5.preset.code().to_string());
+                                                                }
+                                                            });
+                                                            let mut code_buf = new_p5_code.clone().unwrap_or_else(|| p5.code.clone());
+                                                            let code_response = ui.add(
+                                                                egui::TextEdit::multiline(&mut code_buf)
+                                                                    .font(egui::TextStyle::Monospace)
+                                                                    .code_editor()
+                                                                    .desired_rows(6)
+                                                                    .desired_width(ui.available_width()),
+                                                            );
+                                                            if code_response.changed() {
+                                                                new_p5_code = Some(code_buf);
+                                                                new_p5_preset = Some(vv_core::P5Preset::Custom);
+                                                            }
+
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(egui::RichText::new("⚡ ").color(egui::Color32::from_rgb(255, 180, 50)));
+                                                                ui.label(egui::RichText::new(t!("p5.audio_reactive")).weak());
+                                                            });
+
+                                                            for idx in 0..4 {
+                                                                let label = match idx {
+                                                                    0 => t!("p5.param0"),
+                                                                    1 => t!("p5.param1"),
+                                                                    2 => t!("p5.param2"),
+                                                                    _ => t!("p5.param3"),
+                                                                };
+                                                                let mut val = filter.p5_params[idx];
+                                                                let key = filter.p5_keys[idx];
+                                                                let row = param_row(ui, &label, Some(key), |ui| {
+                                                                    slider_field(ui, &mut val, 0.0..=1.0, 0.01, 2)
+                                                                });
+                                                                let target = vv_core::KeyframeTarget::FilterParam(kind, idx);
+                                                                if row.changed {
+                                                                    keyframes.push((KeyframeEdit::Set(vv_core::KeyframeValue::FilterParam(kind, idx, val)), target));
+                                                                }
+                                                                if row.toggled_keyframe {
+                                                                    keyframes.push((KeyframeEdit::Toggle(key.on_keyframe), target));
+                                                                }
+                                                                goto = goto.or(row.goto);
+                                                            }
+                                                        }
+                                                    }
                                                     if kind.has_grade() {
                                                         if self.settings.panels.color_window_open {
                                                             ui.label(egui::RichText::new(t!("color.in_window")).weak());
@@ -2482,6 +2575,9 @@ impl VenturiApp {
                                                         && new_color.is_none()
                                                         && new_shadertoy_code.is_none()
                                                         && new_shadertoy_speed.is_none()
+                                                        && new_p5_preset.is_none()
+                                                        && new_p5_code.is_none()
+                                                        && new_p5_blend.is_none()
                                                         && keyframes.is_empty()
                                                         && enabled == filter.enabled
                                                     {
@@ -2538,6 +2634,24 @@ impl VenturiApp {
                                                         }
                                                         if reset {
                                                             own.shadertoy = defaults.shadertoy;
+                                                        }
+                                                        if let Some(preset) = new_p5_preset {
+                                                            if let Some(p) = &mut own.p5 {
+                                                                p.preset = preset;
+                                                            }
+                                                        }
+                                                        if let Some(code) = &new_p5_code {
+                                                            if let Some(p) = &mut own.p5 {
+                                                                p.code = code.clone();
+                                                            }
+                                                        }
+                                                        if let Some(blend) = new_p5_blend {
+                                                            if let Some(p) = &mut own.p5 {
+                                                                p.blend_mode = blend;
+                                                            }
+                                                        }
+                                                        if reset {
+                                                            own.p5 = defaults.p5;
                                                         }
                                                         let mut pending_keyframes = Vec::new();
                                                         for (edit, target) in &keyframes {
