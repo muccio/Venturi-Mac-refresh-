@@ -2411,6 +2411,25 @@ fn mask_track_mut(
     effects.masks.get_mut(index).map(|m| m.track_mut(param))
 }
 
+pub fn target_track_mut(
+    effects: &mut EffectStack,
+    target: KeyframeTarget,
+) -> Option<&mut Keyframed<f32>> {
+    match target {
+        KeyframeTarget::TransformParam(param) => Some(effects.transform.track_mut(param)),
+        KeyframeTarget::Gain => Some(&mut effects.gain_db),
+        KeyframeTarget::FilterRadius(kind) => filter_mut(effects, kind).map(|f| &mut f.radius),
+        KeyframeTarget::FilterAmount(kind) => filter_mut(effects, kind).map(|f| &mut f.amount),
+        KeyframeTarget::FilterOffset(kind, axis) => {
+            filter_mut(effects, kind).map(|f| &mut f.offset[axis.index()])
+        }
+        KeyframeTarget::FilterGrow(kind) => filter_mut(effects, kind).map(|f| &mut f.grow),
+        KeyframeTarget::Grade(param) => grade_track_mut(effects, param),
+        KeyframeTarget::Mask(index, param) => mask_track_mut(effects, index, param),
+        _ => None,
+    }
+}
+
 /// A keyframe named by parameter and frame: the currency with which the keyframe
 /// editor passes a selection to the commands.
 pub type KeyframePick = (KeyframeTarget, FrameIdx);
@@ -2709,6 +2728,75 @@ impl Command for SetKeyframeInterpolation {
         };
         for &(target, frame, interp) in &self.previous {
             set_keyframe_interpolation(&mut clip.effects, target, frame, interp);
+        }
+    }
+}
+
+/// Applies a sequence of keyframes generated from an audio envelope.
+#[derive(Debug)]
+pub struct ApplyAudioKeyframes {
+    pub timeline: TimelineId,
+    pub track_index: usize,
+    pub clip_id: ClipId,
+    pub target: KeyframeTarget,
+    pub keyframes: Vec<(FrameIdx, f32, Interpolation)>,
+    previous: Option<Vec<(FrameIdx, f32, Interpolation)>>,
+}
+
+impl ApplyAudioKeyframes {
+    pub fn new(
+        timeline: TimelineId,
+        track_index: usize,
+        clip_id: ClipId,
+        target: KeyframeTarget,
+        keyframes: Vec<(FrameIdx, f32, Interpolation)>,
+    ) -> Self {
+        Self {
+            timeline,
+            track_index,
+            clip_id,
+            target,
+            keyframes,
+            previous: None,
+        }
+    }
+}
+
+impl Command for ApplyAudioKeyframes {
+    fn label(&self) -> CommandLabel {
+        CommandLabel::SetKeyframe
+    }
+
+    fn apply(&mut self, project: &mut Project) {
+        let Some(clip) = project.timelines[self.timeline].clip_mut(self.track_index, self.clip_id)
+        else {
+            return;
+        };
+        if let Some(track) = target_track_mut(&mut clip.effects, self.target) {
+            if self.previous.is_none() {
+                self.previous = Some(track.keyframes().to_vec());
+            }
+            for &(frame, val, interp) in &self.keyframes {
+                track.upsert(frame, val, interp);
+            }
+        }
+    }
+
+    fn undo(&self, project: &mut Project) {
+        let Some(clip) = project.timelines[self.timeline].clip_mut(self.track_index, self.clip_id)
+        else {
+            return;
+        };
+        let Some(previous) = &self.previous else {
+            return;
+        };
+        if let Some(track) = target_track_mut(&mut clip.effects, self.target) {
+            for &(frame, _, _) in &self.keyframes {
+                track.remove_at(frame);
+            }
+            for &(frame, val, interp) in previous {
+                track.upsert(frame, val, interp);
+            }
         }
     }
 }

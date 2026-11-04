@@ -323,3 +323,49 @@ fn the_processing_precision_is_an_undoable_step() {
     history.redo(&mut project);
     assert_eq!(project.precision, ProcessingPrecision::Standard);
 }
+
+#[test]
+fn apply_audio_keyframes_modifies_param_and_undoes_cleanly() {
+    let (mut project, tl) = project();
+    let mut history = History::default();
+    let clip_id = ClipId(10);
+    project.timelines[tl].tracks[0].clips.push(Clip::from_source_range(
+        clip_id,
+        ClipSource::SolidColor,
+        0,
+        100,
+        0,
+        Rational::one(),
+    ));
+
+    let keyframes = vec![
+        (0, 1.0f32, Interpolation::Linear),
+        (10, 1.25f32, Interpolation::Linear),
+        (20, 1.0f32, Interpolation::Linear),
+    ];
+
+    let cmd = ApplyAudioKeyframes::new(
+        tl,
+        0,
+        clip_id,
+        KeyframeTarget::TransformParam(TransformParam::ZoomX),
+        keyframes,
+    );
+
+    history.do_command(&mut project, Box::new(cmd));
+
+    let clip = project.timelines[tl].clip(0, clip_id).unwrap();
+    let track = clip.effects.transform.track(TransformParam::ZoomX);
+    assert_eq!(track.keyframes().len(), 3);
+    assert_eq!(track.keyframes()[1].1, 1.25);
+
+    history.undo(&mut project);
+    let clip = project.timelines[tl].clip(0, clip_id).unwrap();
+    let track = clip.effects.transform.track(TransformParam::ZoomX);
+    assert!(track.is_constant());
+
+    history.redo(&mut project);
+    let clip = project.timelines[tl].clip(0, clip_id).unwrap();
+    let track = clip.effects.transform.track(TransformParam::ZoomX);
+    assert_eq!(track.keyframes().len(), 3);
+}
