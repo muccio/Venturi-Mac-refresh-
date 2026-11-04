@@ -1,0 +1,121 @@
+_version: 2
+
+audio_envelope.title:
+  en: "Audio to Keyframes Generator"
+  it: "Generatore Keyframe da Audio"
+
+audio_envelope.source:
+  en: "Audio Source"
+  it: "Sorgente Audio"
+
+audio_envelope.source_master:
+  en: "Timeline Master Mix"
+  it: "Mix Master Timeline"
+
+audio_envelope.source_track:
+  en: "Audio Track"
+  it: "Traccia Audio"
+
+audio_envelope.source_file:
+  en: "External Audio File..."
+  it: "File Audio Esterno..."
+
+audio_envelope.analysis_mode:
+  en: "Analysis Mode"
+  it: "Modalità di Analisi"
+
+audio_envelope.mode_rms:
+  en: "Full Spectrum (RMS)"
+  it: "Spettro Completo (RMS)"
+
+audio_envelope.mode_band:
+  en: "Frequency Band (FFT)"
+  it: "Banda di Frequenza (FFT)"
+
+audio_envelope.band_preset:
+  en: "Band Preset"
+  it: "Preset Banda"
+
+audio_envelope.custom_band:
+  en: "Custom Range"
+  it: "Intervallo Personalizzato"
+
+audio_envelope.freq_min:
+  en: "Freq Min (Hz)"
+  it: "Freq Min (Hz)"
+
+audio_envelope.freq_max:
+  en: "Freq Max (Hz)"
+  it: "Freq Max (Hz)"
+
+audio_envelope.detection_mode:
+  en: "Modulation Type"
+  it: "Tipo di Modulazione"
+
+audio_envelope.type_envelope:
+  en: "Smooth Envelope"
+  it: "Inviluppo Morbido"
+
+audio_envelope.type_peaks:
+  en: "Beat / Transient Peaks"
+  it: "Picchi Transienti / Beat"
+
+audio_envelope.attack_ms:
+  en: "Attack (ms)"
+  it: "Attacco (ms)"
+
+audio_envelope.release_ms:
+  en: "Release (ms)"
+  it: "Rilascio (ms)"
+
+audio_envelope.threshold:
+  en: "Threshold"
+  it: "Soglia"
+
+audio_envelope.sensitivity:
+  en: "Sensitivity"
+  it: "Sensibilità"
+
+audio_envelope.min_peak_dist:
+  en: "Min Peak Gap (frames)"
+  it: "Intervallo Minimo Picchi (frame)"
+
+audio_envelope.pulse_decay:
+  en: "Pulse Decay (frames)"
+  it: "Decadimento Impulso (frame)"
+
+audio_envelope.invert:
+  en: "Invert Curve"
+  it: "Inverti Curva"
+
+audio_envelope.target_param:
+  en: "Target Parameter"
+  it: "Parametro di Destinazione"
+
+audio_envelope.min_val:
+  en: "Min Output"
+  it: "Valore Min"
+
+audio_envelope.max_val:
+  en: "Max Output"
+  it: "Valore Max"
+
+audio_envelope.simplify:
+  en: "Simplify Keyframes"
+  it: "Semplifica Keyframe"
+
+audio_envelope.preview:
+  en: "Audio Waveform & Modulation Curve"
+  it: "Forma d'Onda e Curva di Modulazione"
+
+audio_envelope.bake_button:
+  en: "Generate Keyframes"
+  it: "Genera Keyframe"
+
+audio_envelope.cancel_button:
+  en: "Cancel"
+  it: "Annulla"
+
+audio_envelope.menu_item:
+  en: "Audio to Keyframes..."
+  it: "Keyframe da Audio..."

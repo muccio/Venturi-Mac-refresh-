@@ -4744,6 +4744,7 @@ dependencies = [
 name = "vv-plugin"
 version = "0.8.2"
 dependencies = [
+ "cc",
  "libc",
  "libloading",
  "objc2 0.6.4",

@@ -191,6 +191,18 @@ mod macos {
         println!("RX 11 plugins listed: {rx} of {} total", found.len());
         assert!(rx > 0);
     }
+
+    #[test]
+    fn dispatch_runs_inline_when_app_not_running() {
+        let val = super::super::macos_dispatch::on_main_thread_if_running(|| 42);
+        assert_eq!(val, 42);
+        let from_bg = std::thread::spawn(|| {
+            super::super::macos_dispatch::on_main_thread_if_running(|| "ok")
+        })
+        .join()
+        .unwrap();
+        assert_eq!(from_bg, "ok");
+    }
 }
 
 #[cfg(unix)]

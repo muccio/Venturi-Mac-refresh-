@@ -54,6 +54,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.video</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSDocumentsFolderUsageDescription</key><string>Venturi needs access to your Documents folder to load audio plugins and presets.</string>
+    <key>NSMicrophoneUsageDescription</key><string>Venturi needs access to your microphone to record audio.</string>
 </dict>
 </plist>
 EOF

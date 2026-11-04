@@ -32,6 +32,7 @@ mod paste_attributes;
 mod paste_image;
 mod plugin_editors;
 mod pool_view;
+mod audio_envelope_dialog;
 mod presets;
 mod project_io;
 mod properties_panel;
@@ -442,6 +443,7 @@ struct VenturiApp {
     /// event the next frame.
     menu_paste_pending: bool,
     speed_dialog: Option<speed_dialog::SpeedDialog>,
+    audio_envelope_dialog: Option<audio_envelope_dialog::AudioEnvelopeDialog>,
     silence_dialog: Option<silence_dialog::SilenceDialog>,
     /// Proposed again at the next silence removal of the session.
     silence_params: vv_session::silence::SilenceParams,
@@ -591,6 +593,7 @@ impl Default for VenturiApp {
             copied_media: Vec::new(),
             menu_paste_pending: false,
             speed_dialog: None,
+            audio_envelope_dialog: None,
             silence_dialog: None,
             silence_params: Default::default(),
             silence_speech: HashMap::new(),
@@ -4300,6 +4303,10 @@ impl VenturiApp {
             self.reveal_in_media_pool(media);
         }
         self.show_speed_dialog(ui.ctx());
+        if let Some((track_idx, clip_id)) = self.timeline_state.audio_envelope_dialog_requested.take() {
+            self.open_audio_envelope_dialog(track_idx, clip_id);
+        }
+        self.show_audio_envelope_dialog(ui.ctx());
         if let Some(targets) = self.timeline_state.silence_dialog_requested.take() {
             self.open_silence_dialog(ui.ctx(), targets);
         }
@@ -4569,6 +4576,9 @@ impl VenturiApp {
             );
             pending_effects.extend(editor.commands);
             pending_playhead = editor.playhead.or(pending_playhead);
+            if let Some((track_idx, clip_id)) = editor.open_audio_envelope {
+                self.open_audio_envelope_dialog(track_idx, clip_id);
+            }
         }
         if self.settings.panels.mixer_open {
             let presets_before = (

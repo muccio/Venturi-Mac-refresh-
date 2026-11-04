@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::c_char;
+use std::ffi::{c_char, c_int};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
@@ -91,8 +91,79 @@ impl From<String> for LoadError {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod macos_dispatch {
+    use std::ffi::c_void;
+
+    unsafe extern "C" {
+        static _dispatch_main_q: c_void;
+        fn dispatch_sync_f(
+            queue: *const c_void,
+            context: *mut c_void,
+            work: extern "C" fn(*mut c_void),
+        );
+        static NSApp: *mut objc2::runtime::AnyObject;
+    }
+
+    fn is_main_thread() -> bool {
+        objc2::MainThreadMarker::new().is_some()
+    }
+
+    fn is_app_running() -> bool {
+        unsafe {
+            if NSApp.is_null() {
+                return false;
+            }
+            let running: bool = objc2::msg_send![NSApp, isRunning];
+            running
+        }
+    }
+
+    pub(crate) fn on_main_thread_if_running<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R + Send,
+        R: Send,
+    {
+        if is_main_thread() || !is_app_running() {
+            return f();
+        }
+        struct Context<F, R> {
+            f: Option<F>,
+            res: Option<R>,
+        }
+        extern "C" fn trampoline<F: FnOnce() -> R + Send, R: Send>(ctx_ptr: *mut c_void) {
+            let ctx = unsafe { &mut *ctx_ptr.cast::<Context<F, R>>() };
+            if let Some(f) = ctx.f.take() {
+                ctx.res = Some(f());
+            }
+        }
+        let mut ctx = Context {
+            f: Some(f),
+            res: None,
+        };
+        unsafe {
+            let queue = std::ptr::addr_of!(_dispatch_main_q);
+            dispatch_sync_f(
+                queue,
+                std::ptr::from_mut(&mut ctx).cast(),
+                trampoline::<F, R>,
+            );
+        }
+        ctx.res.expect("trampoline must run")
+    }
+}
+
 pub(crate) fn module(path: &Path) -> Result<Arc<Module>, String> {
-    cached(&MODULES, path, || load(path).map(Arc::new))
+    #[cfg(target_os = "macos")]
+    {
+        cached(&MODULES, path, || {
+            macos_dispatch::on_main_thread_if_running(|| load(path).map(Arc::new))
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        cached(&MODULES, path, || load(path).map(Arc::new))
+    }
 }
 
 // The map lock is never held across `load`: a plugin initializer can be slow or call back
@@ -221,6 +292,30 @@ fn load(_bundle: &Path) -> Result<Module, LoadError> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+unsafe extern "C" {
+    #[cfg(target_os = "macos")]
+    fn vv_plugin_call_dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
+
+    #[cfg(target_os = "macos")]
+    fn vv_plugin_call_bundle_entry(
+        entry: unsafe extern "C" fn(*const objc2_core_foundation::CFBundle) -> bool,
+        bundle: *const objc2_core_foundation::CFBundle,
+    ) -> bool;
+
+    #[cfg(target_os = "linux")]
+    fn vv_plugin_call_module_entry(
+        entry: unsafe extern "C" fn(*mut c_void) -> bool,
+        handle: *mut c_void,
+    ) -> bool;
+
+    fn vv_plugin_call_get_factory(
+        get_factory: unsafe extern "C" fn() -> *mut c_void,
+    ) -> *mut c_void;
+
+    fn vv_plugin_call_bundle_exit(exit_fn: unsafe extern "C" fn() -> bool);
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn load(bundle: &Path) -> Result<Module, LoadError> {
     #[cfg(target_os = "macos")]
     let cf_bundle = bundle_ref(bundle)?;
@@ -241,7 +336,7 @@ fn load(bundle: &Path) -> Result<Module, LoadError> {
     let raw = unsafe {
         library
             .get::<unsafe extern "C" fn() -> *mut c_void>(b"GetPluginFactory\0")
-            .map(|get| get())
+            .map(|get| vv_plugin_call_get_factory(*get))
     };
     // SAFETY: a non-null result is an owned reference to the factory.
     let factory = raw.map_err(|e| e.to_string()).and_then(|raw| {
@@ -261,11 +356,38 @@ fn load(bundle: &Path) -> Result<Module, LoadError> {
 }
 
 // ModuleEntry wants the raw dlopen handle, so open through the unix layer.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn open(bin: &Path) -> Result<(ManuallyDrop<libloading::Library>, *mut c_void), libloading::Error> {
+#[cfg(target_os = "macos")]
+fn open(bin: &Path) -> Result<(ManuallyDrop<libloading::Library>, *mut c_void), String> {
+    use libloading::os::unix::Library;
+    use std::os::unix::ffi::OsStrExt;
+    let c_path = std::ffi::CString::new(bin.as_os_str().as_bytes())
+        .map_err(|e| format!("{e}"))?;
+    // RTLD_NOW = 2, RTLD_LOCAL = 4
+    let handle = unsafe { vv_plugin_call_dlopen(c_path.as_ptr(), 2 | 4) };
+    if handle.is_null() {
+        let msg = unsafe {
+            let err = libc::dlerror();
+            if err.is_null() {
+                "dlopen returned null".to_string()
+            } else {
+                std::ffi::CStr::from_ptr(err).to_string_lossy().into_owned()
+            }
+        };
+        return Err(msg);
+    }
+    // SAFETY: handle was just produced by vv_plugin_call_dlopen.
+    Ok((
+        ManuallyDrop::new(unsafe { Library::from_raw(handle) }.into()),
+        handle,
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open(bin: &Path) -> Result<(ManuallyDrop<libloading::Library>, *mut c_void), String> {
     use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
     // SAFETY: loading a plugin runs its initialisers; that is what hosting means.
-    let lib = unsafe { Library::open(Some(bin), RTLD_NOW | RTLD_LOCAL)? };
+    let lib = unsafe { Library::open(Some(bin), RTLD_NOW | RTLD_LOCAL) }
+        .map_err(|e| e.to_string())?;
     let handle = lib.into_raw();
     // SAFETY: handle was just produced by into_raw.
     Ok((
@@ -289,7 +411,7 @@ fn enter(
         else {
             return Ok(());
         };
-        entry(&*cf_bundle)
+        vv_plugin_call_bundle_entry(*entry, &*cf_bundle)
     };
     std::mem::forget(cf_bundle);
     ok.then_some(()).ok_or_else(|| "bundleEntry failed".into())
@@ -303,7 +425,7 @@ fn enter(library: &libloading::Library, handle: *mut c_void) -> Result<(), Strin
         else {
             return Ok(());
         };
-        entry(handle)
+        vv_plugin_call_module_entry(*entry, handle)
     };
     ok.then_some(()).ok_or_else(|| "ModuleEntry failed".into())
 }
@@ -325,7 +447,7 @@ fn exit(library: &libloading::Library) {
     // SAFETY: both exit points are `bool ()` functions in the VST3 spec.
     unsafe {
         if let Ok(f) = library.get::<unsafe extern "C" fn() -> bool>(name) {
-            f();
+            vv_plugin_call_bundle_exit(*f);
         }
     }
 }

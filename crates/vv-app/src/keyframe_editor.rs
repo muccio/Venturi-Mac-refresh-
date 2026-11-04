@@ -476,6 +476,8 @@ pub(crate) struct KeyframeEditorResponse {
     pub(crate) commands: Vec<BoxedCommand>,
     /// Timeline frame to move the playhead to.
     pub(crate) playhead: Option<FrameIdx>,
+    /// Open audio envelope generator dialog for the active clip.
+    pub(crate) open_audio_envelope: Option<(usize, ClipId)>,
 }
 
 /// Draws the window. `target` is the clip to show (the first selected one)
@@ -495,6 +497,7 @@ pub(crate) fn show_keyframe_editor(
     let mut response = KeyframeEditorResponse {
         commands: Vec::new(),
         playhead: None,
+        open_audio_envelope: None,
     };
     let mut window_open = *open;
     let window = egui::Window::new(t!("keyframes.title"))
@@ -687,6 +690,10 @@ fn show_toolbar(
                 }
             }
         });
+        ui.separator();
+        if ui.button(t!("audio_envelope.menu_item")).clicked() {
+            response.open_audio_envelope = Some((clip.1, clip.2));
+        }
     });
 }
 

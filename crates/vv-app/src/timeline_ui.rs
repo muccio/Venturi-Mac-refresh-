@@ -144,6 +144,8 @@ pub struct TimelineState {
     /// "Change Clip Speed…" asked for these clips: the dialog lives in the
     /// app, which opens it and clears this.
     pub speed_dialog_requested: Option<Vec<ClipKey>>,
+    /// "Audio to Keyframes…" asked for this clip: handled by the app.
+    pub audio_envelope_dialog_requested: Option<ClipKey>,
     /// "Remove Silences…" asked for these clips: handled by the app.
     pub silence_dialog_requested: Option<Vec<ClipKey>>,
     /// Timeline ranges the open silence dialog would remove, painted red.
@@ -449,6 +451,7 @@ impl Default for TimelineState {
             reveal_playhead: false,
             retime_controls: BTreeSet::new(),
             speed_dialog_requested: None,
+            audio_envelope_dialog_requested: None,
             silence_dialog_requested: None,
             silence_preview: Vec::new(),
             reveal_in_pool_requested: None,
@@ -3628,6 +3631,10 @@ pub fn show_timeline(
                             } else {
                                 vec![clip]
                             });
+                            ui.close();
+                        }
+                        if ui.button(t!("audio_envelope.menu_item")).clicked() {
+                            state.audio_envelope_dialog_requested = Some((visual.track_index, visual.clip.id));
                             ui.close();
                         }
                         ui.menu_button(t!("timeline.clip_color"), |ui| {
