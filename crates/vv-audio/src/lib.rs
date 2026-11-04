@@ -5,6 +5,7 @@
 pub mod blocks;
 pub mod dynamics;
 pub mod effect;
+pub mod envelope;
 pub mod eq;
 mod filter;
 pub mod levels;
@@ -17,6 +18,10 @@ pub mod stretched;
 
 pub use blocks::{BLOCK_FRAMES, SampleBlocks};
 pub use effect::{PluginHandle, PluginProcessor, PluginRequest};
+pub use envelope::{
+    AnalysisMode, BandPreset, EnvelopeSettings, PeakSettings, compute_envelope, detect_peaks,
+    simplify_keyframes,
+};
 pub use levels::{LevelAnalysis, LevelSegment, Measured};
 pub use mixer::{
     AnalysisSlot, AudioSource, BandMeter, ClipAudio, ClipInput, LevelReading, MIX_BLOCK_FRAMES,
