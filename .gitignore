@@ -4,3 +4,6 @@
 *.vvproj.bak
 /container/shots/
 /CLAUDE.local.md
+.DS_Store
+*.DS_Store
+
