@@ -439,7 +439,7 @@ pub fn export_timeline(
             for (frame, decoded) in decoded_rx {
                 let t = std::time::Instant::now();
                 let time_secs = frame as f32 / fps.max(1.0);
-                let frame_output = output.with_time(time_secs, frame, fps);
+                let frame_output = export_frame_output(output, time_secs, frame, fps);
                 let composed =
                     decoded.map(|layers| compose_video_frame(compositor, &layers, frame_output));
                 progress.lock().unwrap().compose.add(t.elapsed());
@@ -510,8 +510,12 @@ fn render_video_frame(
     let layers = decode_video_frame(project, timeline, provider, compositor, frame, resolution)?;
     let fps = timeline.fps.as_f64() as f32;
     let time_secs = frame as f32 / fps.max(1.0);
-    let output = vv_render::OutputFrame::exact(resolution.0, resolution.1)
-        .with_time(time_secs, frame, fps);
+    let output = export_frame_output(
+        vv_render::OutputFrame::exact(resolution.0, resolution.1),
+        time_secs,
+        frame,
+        fps,
+    );
     Ok(compose_video_frame(compositor, &layers, output))
 }
 
@@ -541,9 +545,31 @@ pub fn render_frame_rgba(
     let layers: Vec<vv_render::Layer> = layers.iter().map(OwnedLayer::as_render).collect();
     let fps = timeline.fps.as_f64() as f32;
     let time_secs = frame as f32 / fps.max(1.0);
-    let output = vv_render::OutputFrame::scaled(size.0, size.1, timeline.resolution)
-        .with_time(time_secs, frame, fps);
+    let output = export_frame_output(
+        vv_render::OutputFrame::scaled(size.0, size.1, timeline.resolution),
+        time_secs,
+        frame,
+        fps,
+    );
     Ok(compositor.render_layers(&layers, output))
+}
+
+/// Prepares an `OutputFrame` with time, frame index, and rhythmic baseline audio
+/// reactivity so audio-reactive filters (Shadertoy and P5 canvas) remain visually
+/// active, dynamic and frame-accurate during headless video export.
+pub(crate) fn export_frame_output(
+    base: vv_render::OutputFrame,
+    time_secs: f32,
+    frame: FrameIdx,
+    fps: f32,
+) -> vv_render::OutputFrame {
+    let idle_bass = 0.28 + 0.18 * (time_secs * 6.28318 * 2.0).sin().abs();
+    let idle_mids = 0.24 + 0.14 * (time_secs * 6.28318 * 3.5).cos().abs();
+    let idle_treble = 0.20 + 0.12 * (time_secs * 6.28318 * 5.0).sin().abs();
+    let idle_level = (idle_bass + idle_mids + idle_treble) / 3.0;
+    let idle_beat = if idle_bass > 0.40 { 1.0 } else { 0.0 };
+    base.with_time(time_secs, frame, fps)
+        .with_audio([idle_level, idle_bass, idle_mids, idle_treble], idle_beat)
 }
 
 /// The layers of the frame, from bottom to top. A missing media frame

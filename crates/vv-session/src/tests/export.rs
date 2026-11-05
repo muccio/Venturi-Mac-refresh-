@@ -106,6 +106,37 @@ fn render_video_frame_reads_solid_color_at_the_clips_source_frame() {
     assert_i420_near(&frame, &solid_i420(2, 2, RED_I420), "frame");
 }
 
+#[test]
+fn render_video_frame_renders_p5_canvas_filter_on_export() {
+    let project = Project::default();
+    let mut clip = solid_color_clip(1, 0, 10, red());
+    let mut p5_filter = vv_core::ClipFilter::new(vv_core::FilterKind::P5Canvas);
+    if let Some(p5) = p5_filter.p5.as_mut() {
+        p5.preset = vv_core::P5Preset::SpectrumRings;
+    }
+    clip.effects.filters.push(p5_filter);
+
+    let tl = timeline_with(vec![Track {
+        kind: TrackKind::Video,
+        clips: vec![clip],
+        muted: false,
+        solo: false,
+        locked: false,
+        crossings: Vec::new(),
+        mix: Default::default(),
+        armed: Default::default(),
+    }]);
+
+    let compositor = vv_render::Compositor::new_headless();
+    let mut active = StreamingFrameProvider::default();
+    let frame = render_video_frame(&project, &tl, &compositor, &mut active, 5, (64, 64)).unwrap();
+    let base = solid_i420(64, 64, RED_I420);
+    assert_ne!(
+        frame, base,
+        "P5.js Canvas effect must render onto exported frames rather than outputting raw video"
+    );
+}
+
 /// A video clip inside the nested timeline of a compound clip must
 /// show up in the exported frame, at the position of the compound clip
 /// in the outer timeline — not before/after, and not at the one it

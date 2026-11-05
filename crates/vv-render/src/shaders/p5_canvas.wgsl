@@ -244,7 +244,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let rot = u.time * u.params.z * 1.5;
             let norm_angle = fract((angle + rot) / 6.2831853);
 
-            let base_r = mix(50.0, 300.0, u.params.x);
+            let min_dim = min(u.resolution.x, u.resolution.y);
+            let base_r = min_dim * mix(0.12, 0.38, clamp(u.params.x, 0.0, 1.0));
             let bar_count = floor(mix(24.0, 96.0, u.params.y));
             let bar_idx = floor(norm_angle * bar_count);
             let bar_center = (bar_idx + 0.5) / bar_count;
@@ -252,15 +253,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
             let freq_bin = fract(bar_idx / bar_count);
             let audio_val = mix(u.audio.y, u.audio.w, freq_bin) * u.params.w * 2.0 + u.audio.x * 0.5;
-            let bar_len = audio_val * 200.0;
 
-            if (r >= base_r && r <= (base_r + bar_len) && angle_dist < 0.35) {
+            // Idle wave so spectrum rings are visibly alive and animated even without audio stream / in scrub / in export
+            let idle_wave = sin(norm_angle * 12.56637 + u.time * 3.0) * 0.5 + 0.5;
+            let idle_val = (0.12 + 0.18 * idle_wave) * (0.3 + 0.7 * u.params.w);
+            let effective_val = max(audio_val, idle_val);
+            let bar_len = max(min_dim * 0.02, min_dim * effective_val * 0.35);
+
+            // Ring circle outline
+            let ring_thick = max(1.5, min_dim * 0.006);
+            let on_ring = abs(r - base_r) < ring_thick;
+            let on_bar = (r >= base_r && r <= (base_r + bar_len) && angle_dist < 0.38);
+
+            if (on_ring || on_bar) {
                 let bar_col = vec3<f32>(
                     0.2 + 0.8 * freq_bin,
-                    0.6 + 0.4 * sin(r * 0.05),
-                    0.9
+                    0.6 + 0.4 * sin(r * 0.05 + u.time),
+                    0.95
                 );
-                canvas_out = vec4<f32>(base_video.rgb + bar_col * 2.0, base_video.a);
+                let brightness = select(1.5, 2.2, on_bar);
+                canvas_out = vec4<f32>(base_video.rgb + bar_col * brightness, base_video.a);
             }
         }
 
@@ -271,20 +283,43 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
             var sample_pt = frag_coord;
             let lum = luminance(base_video.rgb);
-            if (lum > thresh) {
-                let offset = (sin(frag_coord.x * 0.05 + u.time * 10.0) * streak);
+            let time_glitch = sin(u.time * 8.0 + frag_coord.y * 0.02) > 0.80;
+            var offset = 0.0;
+            if (lum > thresh || time_glitch) {
+                offset = sin(frag_coord.x * 0.05 + u.time * 10.0) * streak;
                 if (is_vert) {
                     sample_pt.y = clamp(sample_pt.y + offset, 0.0, u.resolution.y - 1.0);
                 } else {
                     sample_pt.x = clamp(sample_pt.x + offset, 0.0, u.resolution.x - 1.0);
                 }
             }
-            let sort_col = textureSample(video_in, video_sampler, sample_pt / u.resolution);
-            canvas_out = sort_col;
+
+            // Sample with subtle chromatic aberration on glitch displacement
+            let shift = vec2<f32>(offset * 0.12, 0.0);
+            let r_col = textureSample(video_in, video_sampler, clamp(sample_pt + shift, vec2<f32>(0.0), u.resolution) / u.resolution).r;
+            let g_col = textureSample(video_in, video_sampler, sample_pt / u.resolution).g;
+            let b_col = textureSample(video_in, video_sampler, clamp(sample_pt - shift, vec2<f32>(0.0), u.resolution) / u.resolution).b;
+
+            let streak_line = select(0.0, 0.12, sin(frag_coord.y * 1.2 + u.time * 15.0) > 0.85);
+            canvas_out = vec4<f32>(vec3<f32>(r_col, g_col, b_col) + streak_line, base_video.a);
         }
 
-        default: { // Custom / Fallback
-            canvas_out = base_video;
+        default: { // Custom / Fallback: Run creative ASCII matrix canvas
+            var step = floor(mix(6.0, 28.0, clamp(u.params.x, 0.0, 1.0)));
+            let cell_origin = floor(frag_coord / step) * step;
+            let local_uv = (frag_coord - cell_origin) / step;
+            let sample_uv = (cell_origin + 0.5 * step) / u.resolution;
+            let cell_col = textureSample(video_in, video_sampler, sample_uv);
+
+            var lum = luminance(cell_col.rgb);
+            lum = pow(lum, 1.0 / max(0.2, u.params.y * 1.5));
+            let char_idx = clamp(i32(lum * 9.0), 0, 9);
+            let mask = ascii_glyph_mask(char_idx, local_uv);
+
+            let sat_boost = u.params.z * 1.4;
+            let gray = vec3<f32>(lum);
+            let final_rgb = mix(gray, cell_col.rgb, sat_boost);
+            canvas_out = vec4<f32>(final_rgb * mask, 1.0);
         }
     }
 

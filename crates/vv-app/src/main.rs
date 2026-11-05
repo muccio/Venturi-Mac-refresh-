@@ -1956,11 +1956,24 @@ impl VenturiApp {
         let time_secs = frame_idx as f32 / fps.max(1.0);
         let out = out.with_time(time_secs, frame_idx, fps);
 
-        let (audio_levels, beat) = self
+        let (mut audio_levels, mut beat) = self
             .timeline_audio
             .as_ref()
             .map(TimelineAudio::audio_reactivity_uniforms)
             .unwrap_or(([0.0; 4], 0.0));
+
+        // When scrubbing, paused, or during silence, maintain active idle audio uniforms
+        // so shaders and canvas filters are visibly alive and responsive to scrub position.
+        if !self.is_timeline_playing() || (audio_levels[0] < 0.01 && audio_levels[1] < 0.01) {
+            let idle_bass = 0.28 + 0.18 * (time_secs * 6.28318 * 2.0).sin().abs();
+            let idle_mids = 0.24 + 0.14 * (time_secs * 6.28318 * 3.5).cos().abs();
+            let idle_treble = 0.20 + 0.12 * (time_secs * 6.28318 * 5.0).sin().abs();
+            let idle_level = (idle_bass + idle_mids + idle_treble) / 3.0;
+            let idle_beat = if idle_bass > 0.40 { 1.0 } else { 0.0 };
+            audio_levels = [idle_level, idle_bass, idle_mids, idle_treble];
+            beat = idle_beat;
+        }
+
         out.with_audio(audio_levels, beat)
     }
 

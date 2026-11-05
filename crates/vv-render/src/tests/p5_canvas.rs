@@ -78,6 +78,63 @@ fn p5_canvas_renders_pixels_for_all_presets() {
 }
 
 #[test]
+fn p5_canvas_renders_distinct_pixels_with_zero_audio_for_all_presets() {
+    let compositor = crate::Compositor::new_headless();
+
+    // Baseline image without filters
+    let base_layer = crate::Layer {
+        content: crate::LayerContent::Solid(vv_core::Rgba {
+            r: 0.6,
+            g: 0.4,
+            b: 0.2,
+            a: 1.0,
+        }),
+        transform: vv_core::Transform::default(),
+        opacity: 1.0,
+        filters: &[],
+        blend: vv_core::BlendMode::Normal,
+        masks: &[],
+    };
+
+    let zero_audio_output = crate::OutputFrame::exact(64, 64)
+        .with_time(1.0, 24, 24.0)
+        .with_audio([0.0, 0.0, 0.0, 0.0], 0.0);
+
+    let base_pixels = compositor.render_layers(&[base_layer], zero_audio_output);
+
+    for preset in P5Preset::ALL {
+        let mut filter = ClipFilter::new(FilterKind::P5Canvas);
+        if let Some(p5) = filter.p5.as_mut() {
+            p5.preset = preset;
+        }
+        let filter_val = filter.value_at(0);
+
+        let filtered_layer = crate::Layer {
+            content: crate::LayerContent::Solid(vv_core::Rgba {
+                r: 0.6,
+                g: 0.4,
+                b: 0.2,
+                a: 1.0,
+            }),
+            transform: vv_core::Transform::default(),
+            opacity: 1.0,
+            filters: std::slice::from_ref(&filter_val),
+            blend: vv_core::BlendMode::Normal,
+            masks: &[],
+        };
+
+        let pixels = compositor.render_layers(&[filtered_layer], zero_audio_output);
+        assert_eq!(pixels.len(), 64 * 64 * 4);
+        let differs = pixels != base_pixels;
+        assert!(
+            differs,
+            "Preset {:?} must produce distinct visual effect even with zero audio (idle / scrub / export)",
+            preset
+        );
+    }
+}
+
+#[test]
 fn p5_canvas_chains_into_shadertoy() {
     let compositor = crate::Compositor::new_headless();
 

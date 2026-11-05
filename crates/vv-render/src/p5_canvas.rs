@@ -36,7 +36,25 @@ impl P5Uniforms {
             P5Preset::WaveMatrix => 3u32,
             P5Preset::SpectrumRings => 4u32,
             P5Preset::GlitchPixelSort => 5u32,
-            P5Preset::Custom => 6u32,
+            P5Preset::Custom => {
+                if let Some(code) = vv_core::get_p5_script(p5.script_id) {
+                    if code.contains("Spectrum Rings") || code.contains("spectrum") || code.contains("bar_len") {
+                        4u32
+                    } else if code.contains("Wave Matrix") || code.contains("wave") {
+                        3u32
+                    } else if code.contains("Particle") {
+                        2u32
+                    } else if code.contains("Monochrome") {
+                        1u32
+                    } else if code.contains("Glitch") || code.contains("Pixel Sorter") {
+                        5u32
+                    } else {
+                        0u32
+                    }
+                } else {
+                    0u32
+                }
+            }
         };
         let blend_idx = match p5.blend_mode {
             P5BlendMode::Normal => 0u32,
