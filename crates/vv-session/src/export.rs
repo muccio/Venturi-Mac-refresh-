@@ -366,7 +366,9 @@ pub fn export_timeline(
     // Decode, GPU composition and encode on three threads: in series each one
     // waited for the others and none saturated the machine.
     let (decoded_tx, decoded_rx) =
-        std::sync::mpsc::sync_channel::<Result<Vec<OwnedLayer>, ExportError>>(RENDER_AHEAD_FRAMES);
+        std::sync::mpsc::sync_channel::<(FrameIdx, Result<Vec<OwnedLayer>, ExportError>)>(
+            RENDER_AHEAD_FRAMES,
+        );
     let (composed_tx, composed_rx) =
         std::sync::mpsc::sync_channel::<Result<Vec<u8>, ExportError>>(RENDER_AHEAD_FRAMES);
     let resolution = timeline.resolution;
@@ -426,17 +428,20 @@ pub fn export_timeline(
                 drop(p);
                 let failed = decoded.is_err();
                 // `send` fails only if the next stage has already stopped.
-                if decoded_tx.send(decoded).is_err() || failed {
+                if decoded_tx.send((frame, decoded)).is_err() || failed {
                     return;
                 }
             }
         });
 
+        let fps = timeline.fps.as_f64() as f32;
         scope.spawn(move || {
-            for decoded in decoded_rx {
+            for (frame, decoded) in decoded_rx {
                 let t = std::time::Instant::now();
+                let time_secs = frame as f32 / fps.max(1.0);
+                let frame_output = output.with_time(time_secs, frame, fps);
                 let composed =
-                    decoded.map(|layers| compose_video_frame(compositor, &layers, output));
+                    decoded.map(|layers| compose_video_frame(compositor, &layers, frame_output));
                 progress.lock().unwrap().compose.add(t.elapsed());
                 let failed = composed.is_err();
                 if composed_tx.send(composed).is_err() || failed {
@@ -503,7 +508,10 @@ fn render_video_frame(
     resolution: (u32, u32),
 ) -> Result<Vec<u8>, ExportError> {
     let layers = decode_video_frame(project, timeline, provider, compositor, frame, resolution)?;
-    let output = vv_render::OutputFrame::exact(resolution.0, resolution.1);
+    let fps = timeline.fps.as_f64() as f32;
+    let time_secs = frame as f32 / fps.max(1.0);
+    let output = vv_render::OutputFrame::exact(resolution.0, resolution.1)
+        .with_time(time_secs, frame, fps);
     Ok(compose_video_frame(compositor, &layers, output))
 }
 
@@ -531,7 +539,10 @@ pub fn render_frame_rgba(
         timeline.resolution,
     )?;
     let layers: Vec<vv_render::Layer> = layers.iter().map(OwnedLayer::as_render).collect();
-    let output = vv_render::OutputFrame::scaled(size.0, size.1, timeline.resolution);
+    let fps = timeline.fps.as_f64() as f32;
+    let time_secs = frame as f32 / fps.max(1.0);
+    let output = vv_render::OutputFrame::scaled(size.0, size.1, timeline.resolution)
+        .with_time(time_secs, frame, fps);
     Ok(compositor.render_layers(&layers, output))
 }
 

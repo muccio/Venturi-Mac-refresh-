@@ -1768,11 +1768,22 @@ impl Compositor {
                 let st_out = self.scratch_texture(output.width, output.height);
                 let st_out_view = st_out.create_view(&wgpu::TextureViewDescriptor::default());
 
+                let frame_idx = if st_val.source_frame >= 0 {
+                    st_val.source_frame
+                } else {
+                    output.frame_idx
+                };
+                let time_secs = if st_val.source_frame >= 0 && output.fps > 0.0 {
+                    (st_val.source_frame as f32 / output.fps) * st_val.speed
+                } else {
+                    output.time_secs * st_val.speed
+                };
+
                 let uniforms = crate::shadertoy::ShadertoyUniforms::new(
                     output.width,
                     output.height,
-                    output.time_secs * st_val.speed,
-                    output.frame_idx,
+                    time_secs,
+                    frame_idx,
                     output.fps,
                     st_val.mouse,
                     output.audio,
@@ -1833,6 +1844,17 @@ impl Compositor {
                 let p5_out = self.scratch_texture(output.width, output.height);
                 let p5_out_view = p5_out.create_view(&wgpu::TextureViewDescriptor::default());
 
+                let frame_idx = if p5_val.source_frame >= 0 {
+                    p5_val.source_frame
+                } else {
+                    output.frame_idx
+                };
+                let time_secs = if p5_val.source_frame >= 0 && output.fps > 0.0 {
+                    p5_val.source_frame as f32 / output.fps
+                } else {
+                    output.time_secs
+                };
+
                 self.p5.render(
                     &self.device,
                     &self.queue,
@@ -1841,7 +1863,8 @@ impl Compositor {
                     &p5_out_view,
                     output.width,
                     output.height,
-                    output.time_secs,
+                    time_secs,
+                    frame_idx.max(0) as u32,
                     output.fps,
                     p5_val,
                     output.audio,

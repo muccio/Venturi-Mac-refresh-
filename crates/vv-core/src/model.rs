@@ -1331,6 +1331,7 @@ pub struct ShadertoyValue {
     pub params: [f32; 4],
     pub speed: f32,
     pub mouse: [f32; 4],
+    pub source_frame: FrameIdx,
 }
 
 /// Global interned P5 script store.
@@ -1467,6 +1468,7 @@ pub struct P5Value {
     pub script_id: u32,
     pub params: [f32; 4],
     pub blend_mode: P5BlendMode,
+    pub source_frame: FrameIdx,
 }
 
 /// A filter applied to a clip. The order in the `Vec` of
@@ -1667,6 +1669,7 @@ impl ClipFilter {
                     ],
                     speed: s.speed,
                     mouse: s.mouse,
+                    source_frame: frame,
                 }
             })
         } else {
@@ -1685,6 +1688,7 @@ impl ClipFilter {
                         p.params[3].value_at(frame),
                     ],
                     blend_mode: p.blend_mode,
+                    source_frame: frame,
                 }
             })
         } else {

@@ -12,7 +12,7 @@ struct P5Uniforms {
     audio_beat: f32,
     preset: u32,            // 0: AsciiColor, 1: AsciiMono, 2: ParticleSampler, 3: WaveMatrix, 4: SpectrumRings, 5: GlitchPixelSort, 6: Custom
     blend_mode: u32,        // 0: Normal, 1: Add, 2: Screen, 3: Multiply, 4: Overlay
-    _pad: u32,
+    frame: u32,
 };
 
 @group(0) @binding(0) var video_in: texture_2d<f32>;

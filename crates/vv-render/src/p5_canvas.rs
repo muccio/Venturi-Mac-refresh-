@@ -15,7 +15,7 @@ pub struct P5Uniforms {
     pub audio_beat: f32,
     pub preset: u32,
     pub blend_mode: u32,
-    pub _pad: u32,
+    pub frame: u32,
 }
 
 impl P5Uniforms {
@@ -23,6 +23,7 @@ impl P5Uniforms {
         width: u32,
         height: u32,
         time_secs: f32,
+        frame: u32,
         fps: f32,
         p5: P5Value,
         audio_levels: [f32; 4],
@@ -54,7 +55,7 @@ impl P5Uniforms {
             audio_beat: beat,
             preset: preset_idx,
             blend_mode: blend_idx,
-            _pad: 0,
+            frame,
         }
     }
 }
@@ -173,12 +174,13 @@ impl P5Runner {
         width: u32,
         height: u32,
         time_secs: f32,
+        frame: u32,
         fps: f32,
         p5: P5Value,
         audio_levels: [f32; 4],
         beat: f32,
     ) {
-        let uniforms = P5Uniforms::new(width, height, time_secs, fps, p5, audio_levels, beat);
+        let uniforms = P5Uniforms::new(width, height, time_secs, frame, fps, p5, audio_levels, beat);
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vv-render p5 uniform buffer"),
             contents: bytemuck::bytes_of(&uniforms),

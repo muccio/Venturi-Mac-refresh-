@@ -676,6 +676,12 @@ impl TimelineAudio {
             .map_or((0.0, 0.0), Mixer::peak_linear_stereo)
     }
 
+    pub fn audio_reactivity_uniforms(&self) -> ([f32; 4], f32) {
+        self.mixer
+            .as_ref()
+            .map_or(([0.0; 4], 0.0), Mixer::audio_reactivity_uniforms)
+    }
+
     pub fn plugin_latency_ms(&self, key: u64) -> Option<f32> {
         let samples = self.buffers.plugin_latency(key)?;
         Some(samples as f32 * 1000.0 / self.mix.sample_rate as f32)

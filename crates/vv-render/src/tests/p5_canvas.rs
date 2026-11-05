@@ -15,11 +15,13 @@ fn p5_uniforms_pack_correctly() {
         script_id: 42,
         params: [0.25, 0.5, 0.75, 1.0],
         blend_mode: P5BlendMode::Screen,
+        source_frame: 0,
     };
     let uniforms = P5Uniforms::new(
         1920,
         1080,
         2.5,
+        75,
         30.0,
         p5_val,
         [0.6, 0.8, 0.4, 0.2],
@@ -27,6 +29,7 @@ fn p5_uniforms_pack_correctly() {
     );
     assert_eq!(uniforms.resolution, [1920.0, 1080.0]);
     assert_eq!(uniforms.time, 2.5);
+    assert_eq!(uniforms.frame, 75);
     assert_eq!(uniforms.fps, 30.0);
     assert_eq!(uniforms.preset, 3); // WaveMatrix is 3
     assert_eq!(uniforms.blend_mode, 2); // Screen is 2

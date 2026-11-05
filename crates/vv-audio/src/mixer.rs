@@ -2330,6 +2330,8 @@ pub struct Mixer {
     retained: Vec<Arc<MixerState>>,
     peak_left_bits: Arc<AtomicU32>,
     peak_right_bits: Arc<AtomicU32>,
+    peak_bass_bits: Arc<AtomicU32>,
+    peak_treble_bits: Arc<AtomicU32>,
     sample_rate: u32,
     channels: u16,
 }
@@ -2363,12 +2365,16 @@ impl Mixer {
         let pending: Arc<Mutex<Option<Arc<MixerState>>>> = Arc::new(Mutex::new(None));
         let peak_left_bits = Arc::new(AtomicU32::new(0.0f32.to_bits()));
         let peak_right_bits = Arc::new(AtomicU32::new(0.0f32.to_bits()));
+        let peak_bass_bits = Arc::new(AtomicU32::new(0.0f32.to_bits()));
+        let peak_treble_bits = Arc::new(AtomicU32::new(0.0f32.to_bits()));
 
         let cb_playing = playing.clone();
         let cb_position = position.clone();
         let cb_pending = pending.clone();
         let cb_peak_left = peak_left_bits.clone();
         let cb_peak_right = peak_right_bits.clone();
+        let cb_peak_bass = peak_bass_bits.clone();
+        let cb_peak_treble = peak_treble_bits.clone();
         let mut current = initial.clone();
         let ch = channels.max(1) as usize;
 
@@ -2417,6 +2423,9 @@ impl Mixer {
                     let (l, r) = stereo_peak(data, ch);
                     cb_peak_left.store(l.to_bits(), Ordering::Relaxed);
                     cb_peak_right.store(r.to_bits(), Ordering::Relaxed);
+                    let (bass, treble) = audio_filter_peaks(data, ch);
+                    cb_peak_bass.store(bass.to_bits(), Ordering::Relaxed);
+                    cb_peak_treble.store(treble.to_bits(), Ordering::Relaxed);
                 },
                 move |err| eprintln!("vv-audio: mixer stream error: {err}"),
                 None,
@@ -2432,6 +2441,8 @@ impl Mixer {
             retained: vec![initial],
             peak_left_bits,
             peak_right_bits,
+            peak_bass_bits,
+            peak_treble_bits,
             sample_rate,
             channels,
         })
@@ -2477,6 +2488,37 @@ impl Mixer {
             f32::from_bits(self.peak_right_bits.load(Ordering::Relaxed)),
         )
     }
+
+    /// Real-time live audio reactivity uniforms: ([level, bass, mids, treble], beat).
+    pub fn audio_reactivity_uniforms(&self) -> ([f32; 4], f32) {
+        let (l, r) = self.peak_linear_stereo();
+        let level = (l + r) * 0.5;
+        let bass = f32::from_bits(self.peak_bass_bits.load(Ordering::Relaxed));
+        let treble = f32::from_bits(self.peak_treble_bits.load(Ordering::Relaxed));
+        let mids = (level - bass * 0.5 - treble * 0.5).max(0.0);
+        let beat = if bass > 0.4 { 1.0 } else { 0.0 };
+        ([level.clamp(0.0, 1.0), bass.clamp(0.0, 1.0), mids.clamp(0.0, 1.0), treble.clamp(0.0, 1.0)], beat)
+    }
+}
+
+fn audio_filter_peaks(data: &[f32], channels: usize) -> (f32, f32) {
+    let mut max_bass = 0.0f32;
+    let mut max_treble = 0.0f32;
+    let mut lp_bass = 0.0f32;
+    let mut lp_treble = 0.0f32;
+    let alpha_bass = 0.033f32;
+    let alpha_treble = 0.52f32;
+
+    for frame in data.chunks(channels.max(1)) {
+        let s = frame.first().copied().unwrap_or(0.0);
+        lp_bass += alpha_bass * (s - lp_bass);
+        max_bass = max_bass.max(lp_bass.abs());
+
+        lp_treble += alpha_treble * (s - lp_treble);
+        let hp = s - lp_treble;
+        max_treble = max_treble.max(hp.abs());
+    }
+    (max_bass * 1.5, max_treble * 1.5)
 }
 
 fn stereo_peak(data: &[f32], channels: usize) -> (f32, f32) {

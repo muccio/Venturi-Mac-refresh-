@@ -647,6 +647,49 @@ fn a_nan_parameter_never_renders_the_same() {
     assert!(!renders_same(&[layer()], &[layer()]));
 }
 
+#[test]
+fn animated_shadertoy_and_p5_filters_render_differently_across_frames() {
+    let st_filter = vv_core::ClipFilter::new(vv_core::FilterKind::Shadertoy);
+    let p5_filter = vv_core::ClipFilter::new(vv_core::FilterKind::P5Canvas);
+
+    let st_f0 = st_filter.value_at(0);
+    let st_f1 = st_filter.value_at(1);
+    assert_ne!(st_f0, st_f1);
+    assert_eq!(st_f0.shadertoy.unwrap().source_frame, 0);
+    assert_eq!(st_f1.shadertoy.unwrap().source_frame, 1);
+
+    let p5_f0 = p5_filter.value_at(0);
+    let p5_f1 = p5_filter.value_at(1);
+    assert_ne!(p5_f0, p5_f1);
+    assert_eq!(p5_f0.p5.unwrap().source_frame, 0);
+    assert_eq!(p5_f1.p5.unwrap().source_frame, 1);
+
+    let frame = gray_frame();
+    let layer_f0 = OwnedLayer {
+        content: OwnedContent::Video {
+            frame: frame.clone(),
+            source_size: (16, 16),
+        },
+        transform: vv_core::Transform::default(),
+        opacity: 1.0,
+        filters: vec![st_f0],
+        blend: vv_core::BlendMode::Normal,
+        masks: Vec::new(),
+    };
+    let layer_f1 = OwnedLayer {
+        content: OwnedContent::Video {
+            frame: frame.clone(),
+            source_size: (16, 16),
+        },
+        transform: vv_core::Transform::default(),
+        opacity: 1.0,
+        filters: vec![st_f1],
+        blend: vv_core::BlendMode::Normal,
+        masks: Vec::new(),
+    };
+    assert!(!renders_same(&[layer_f0], &[layer_f1]));
+}
+
 fn colored_solid(id: u64, color: Rgba) -> Clip {
     let mut clip = solid_clip(id, 0, 10, [1.0, 1.0]);
     clip.effects.color = Some(vv_core::Keyframed::constant(color));

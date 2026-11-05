@@ -1926,7 +1926,7 @@ impl VenturiApp {
         let timeline_size = self
             .timeline_id
             .map(|id| self.session.project.timelines[id].resolution);
-        match video_size.or(timeline_size.filter(|_| !layers.is_empty())) {
+        let out = match video_size.or(timeline_size.filter(|_| !layers.is_empty())) {
             Some(size) => {
                 let timeline_size = timeline_size.unwrap_or(size);
                 let (out_w, out_h) = vv_render::fit_output_size(size, timeline_size);
@@ -1938,7 +1938,30 @@ impl VenturiApp {
                 let step = (w.max(h) / 64).max(1);
                 vv_render::OutputFrame::scaled((w / step).max(1), (h / step).max(1), (w, h))
             }
-        }
+        };
+
+        let (fps, frame_idx) = if self.browsing.is_some() {
+            (
+                self.preview_meta.as_ref().map_or(24.0, |m| m.fps.as_f64() as f32),
+                self.browse_playhead,
+            )
+        } else if let Some(id) = self.timeline_id {
+            (
+                self.session.project.timelines[id].fps.as_f64() as f32,
+                self.timeline_state.playhead,
+            )
+        } else {
+            (24.0, 0)
+        };
+        let time_secs = frame_idx as f32 / fps.max(1.0);
+        let out = out.with_time(time_secs, frame_idx, fps);
+
+        let (audio_levels, beat) = self
+            .timeline_audio
+            .as_ref()
+            .map(TimelineAudio::audio_reactivity_uniforms)
+            .unwrap_or(([0.0; 4], 0.0));
+        out.with_audio(audio_levels, beat)
     }
 
     /// Measures the viewer's frame for the Color window's scope slots, shown
@@ -4784,7 +4807,11 @@ impl VenturiApp {
                 if self.preview_meta.as_ref().is_some_and(|m| !m.has_video) {
                     self.last_viewer_frame_kind = None;
                 } else if let Some(frame) = self.browsing_video_frame() {
-                    let output = vv_render::OutputFrame::exact(frame.width, frame.height);
+                    let fps = self.preview_meta.as_ref().map_or(24.0, |m| m.fps.as_f64() as f32);
+                    let frame_idx = self.browse_playhead;
+                    let time_secs = frame_idx as f32 / fps.max(1.0);
+                    let output = vv_render::OutputFrame::exact(frame.width, frame.height)
+                        .with_time(time_secs, frame_idx, fps);
                     let layer = frame_provider::OwnedLayer {
                         content: frame_provider::OwnedContent::Video {
                             source_size: (frame.width, frame.height),
