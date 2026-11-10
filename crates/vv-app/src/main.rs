@@ -2173,8 +2173,11 @@ impl VenturiApp {
             let frame = playhead.max(clip.timeline_start);
             let involved = match timeline.tracks[track_index].crossing_at(frame) {
                 Some((left, right, crossing)) if left.id == clip.id || right.id == clip.id => {
-                    // A Smooth Cut merges both sides into one layer.
-                    if crossing.transition.kind == vv_core::TransitionKind::SmoothCut {
+                    // A Smooth Cut or Shadertoy transition merges both sides into one layer.
+                    if matches!(
+                        crossing.transition.kind,
+                        vv_core::TransitionKind::SmoothCut | vv_core::TransitionKind::Shadertoy(_)
+                    ) {
                         1
                     } else {
                         2

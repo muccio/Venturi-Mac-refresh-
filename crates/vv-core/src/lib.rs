@@ -11,6 +11,7 @@ pub mod persistence;
 pub mod pool;
 pub mod p5_presets;
 pub mod shadertoy_presets;
+pub mod shadertoy_transitions;
 mod stable_hash;
 
 pub use command::{
@@ -38,6 +39,7 @@ pub use persistence::{PersistenceError, load_project, save_project};
 pub use pool::{
     AddEntities, DeleteFolder, MoveFolder, RenameFolder, RenameTimeline, SetMediaFolder,
 };
+pub use shadertoy_transitions::ShadertoyTransitionPreset;
 pub use stable_hash::{StableHasher, stable_hash};
 
 #[cfg(test)]

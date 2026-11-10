@@ -586,6 +586,63 @@ fn a_smooth_cut_without_a_gpu_dissolves_between_the_held_sides() {
     assert_eq!(layers[1].opacity, 0.25);
 }
 
+#[test]
+fn crossing_shadertoy_transition_renders_correctly() {
+    let left = solid_clip(1, 0, 100, [1.0, 1.0]);
+    let right = solid_clip(2, 100, 100, [1.0, 1.0]);
+    let mut track = Track::new(TrackKind::Video);
+    track.clips = vec![left.clone(), right];
+    track.crossings = vec![CrossTransition {
+        left_clip: ClipId(1),
+        right_clip: ClipId(2),
+        transition: Transition {
+            kind: TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::LinearCrossfade),
+            duration: 10,
+            direction: PushDirection::Right,
+            ease: Ease::None,
+            curve: 0.0,
+        },
+    }];
+    let timeline = Timeline {
+        name: "t".into(),
+        fps: Rational::new(25, 1),
+        resolution: (64, 64),
+        tracks: vec![track],
+        markers: Vec::new(),
+        master: Default::default(),
+    };
+
+    // 1. With NoMediaProvider, falls back to dissolve
+    let layers_fallback = track_layers_at(
+        &Project::default(),
+        &timeline,
+        0,
+        &left,
+        98,
+        timeline.resolution,
+        &mut NoMediaProvider,
+    )
+    .unwrap();
+    assert_eq!(layers_fallback.len(), 2);
+
+    // 2. With GpuCompounds, produces 1 single composited texture layer
+    let compositor = vv_render::Compositor::new_headless();
+    let mut inner = NoMediaProvider;
+    let mut gpu_provider = GpuCompounds::new(&mut inner, &compositor);
+    let layers_gpu = track_layers_at(
+        &Project::default(),
+        &timeline,
+        0,
+        &left,
+        98,
+        timeline.resolution,
+        &mut gpu_provider,
+    )
+    .unwrap();
+    assert_eq!(layers_gpu.len(), 1);
+    assert!(matches!(layers_gpu[0].content, OwnedContent::Texture { .. }));
+}
+
 fn gray_frame() -> Arc<FrameYuv420> {
     Arc::new(FrameYuv420 {
         width: 2,

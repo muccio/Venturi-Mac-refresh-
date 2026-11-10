@@ -49,6 +49,18 @@ pub trait FrameProvider {
         None
     }
 
+    /// The frame at `progress` of a Shadertoy transition between `from` and `to`.
+    fn shadertoy_transition_texture(
+        &mut self,
+        _from: &OwnedLayer,
+        _to: &OwnedLayer,
+        _preset: vv_core::ShadertoyTransitionPreset,
+        _progress: f32,
+        _timeline_size: (u32, u32),
+    ) -> Option<vv_render::PooledTexture> {
+        None
+    }
+
     /// `fill` cut out by `matte` (see `stack_layers`), as a GPU texture of
     /// `timeline_size`. `None` from the default implementation: the caller
     /// shows `fill` as it is.
@@ -284,6 +296,24 @@ impl FrameProvider for GpuCompounds<'_> {
         Some(self.compositor.render_smooth_cut_to_owned_texture(
             &from.as_render(),
             &to.as_render(),
+            progress,
+            vv_render::OutputFrame::exact(width, height).reduced(self.preview_divisor),
+        ))
+    }
+
+    fn shadertoy_transition_texture(
+        &mut self,
+        from: &OwnedLayer,
+        to: &OwnedLayer,
+        preset: vv_core::ShadertoyTransitionPreset,
+        progress: f32,
+        (width, height): (u32, u32),
+    ) -> Option<vv_render::PooledTexture> {
+        Some(self.compositor.render_shadertoy_transition_to_owned_texture(
+            &from.as_render(),
+            &to.as_render(),
+            preset,
+            None,
             progress,
             vv_render::OutputFrame::exact(width, height).reduced(self.preview_divisor),
         ))
@@ -607,6 +637,18 @@ fn crossing_layers(
             provider,
         );
     }
+    if let vv_core::TransitionKind::Shadertoy(preset) = crossing.transition.kind {
+        return shadertoy_transition_layers(
+            project,
+            left,
+            right,
+            preset,
+            progress,
+            frame,
+            timeline_size,
+            provider,
+        );
+    }
     let frame_size = (timeline_size.0 as f32, timeline_size.1 as f32);
     // The zoom of each clip at its own source frame: `offsets` needs it to
     // really clear the screen even if one of the two (or both) is zoomed
@@ -670,6 +712,43 @@ fn smooth_cut_layers(
         return Ok(Vec::new());
     };
     if let Some(texture) = provider.smooth_cut_texture(&from, &to, progress, timeline_size) {
+        return Ok(vec![OwnedLayer {
+            content: OwnedContent::Texture {
+                texture,
+                source_size: timeline_size,
+            },
+            transform: Transform::default(),
+            opacity: 1.0,
+            filters: Vec::new(),
+            blend: from.blend,
+            masks: Vec::new(),
+        }]);
+    }
+    to.opacity *= progress;
+    Ok(vec![from, to])
+}
+
+/// A Shadertoy transition renders the active frame of both sides simultaneously
+/// and morphs or composites them via the chosen GPU shader preset.
+fn shadertoy_transition_layers(
+    project: &Project,
+    left: &Clip,
+    right: &Clip,
+    preset: vv_core::ShadertoyTransitionPreset,
+    progress: f32,
+    frame: FrameIdx,
+    timeline_size: (u32, u32),
+    provider: &mut dyn FrameProvider,
+) -> Result<Vec<OwnedLayer>, ExportError> {
+    let (Some(from), Some(mut to)) = (
+        crossing_side_layer(project, left, frame, timeline_size, provider, [0.0; 2], 1.0)?,
+        crossing_side_layer(project, right, frame, timeline_size, provider, [0.0; 2], 1.0)?,
+    ) else {
+        return Ok(Vec::new());
+    };
+    if let Some(texture) =
+        provider.shadertoy_transition_texture(&from, &to, preset, progress, timeline_size)
+    {
         return Ok(vec![OwnedLayer {
             content: OwnedContent::Texture {
                 texture,

@@ -1716,7 +1716,7 @@ impl ClipFilter {
 /// `FilterKind`, an open variety for future transitions. Unlike the
 /// filters, it applies only to one edge of the clip (`EffectStack::transition_in`
 /// or `transition_out`), not to the whole clip.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TransitionKind {
     Push,
     CrossDissolve,
@@ -1724,6 +1724,8 @@ pub enum TransitionKind {
     /// flow, to hide a jump cut. Needs both sides: on a single edge, or
     /// where the renderer cannot morph, it falls back to a dissolve.
     SmoothCut,
+    /// GPU shader transition based on Shadertoy GLSL/WGSL pipeline.
+    Shadertoy(crate::shadertoy_transitions::ShadertoyTransitionPreset),
 }
 
 impl TransitionKind {
@@ -1732,9 +1734,14 @@ impl TransitionKind {
         matches!(self, Self::Push)
     }
 
+    /// Whether this is a Shadertoy transition.
+    pub fn is_shadertoy(self) -> bool {
+        matches!(self, Self::Shadertoy(_))
+    }
+
     /// Whether on a clip edge it changes the opacity (rather than the position).
     fn fades(self) -> bool {
-        matches!(self, Self::CrossDissolve | Self::SmoothCut)
+        matches!(self, Self::CrossDissolve | Self::SmoothCut | Self::Shadertoy(_))
     }
 }
 
@@ -1833,7 +1840,9 @@ impl Transition {
     pub fn default_ease(kind: TransitionKind) -> Ease {
         match kind {
             TransitionKind::Push => Ease::InOut,
-            TransitionKind::CrossDissolve | TransitionKind::SmoothCut => Ease::None,
+            TransitionKind::CrossDissolve
+            | TransitionKind::SmoothCut
+            | TransitionKind::Shadertoy(_) => Ease::None,
         }
     }
 }
@@ -3176,7 +3185,9 @@ impl CrossTransition {
     pub fn opacities(&self, progress: f32) -> (f32, f32) {
         match self.transition.kind {
             TransitionKind::Push => (1.0, 1.0),
-            TransitionKind::CrossDissolve | TransitionKind::SmoothCut => (1.0, progress),
+            TransitionKind::CrossDissolve
+            | TransitionKind::SmoothCut
+            | TransitionKind::Shadertoy(_) => (1.0, progress),
         }
     }
 }

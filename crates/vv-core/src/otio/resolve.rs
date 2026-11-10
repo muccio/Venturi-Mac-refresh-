@@ -504,6 +504,7 @@ pub(super) fn transition_to_otio(
         crate::model::TransitionKind::Push => ("Push", "Custom_Transition"),
         crate::model::TransitionKind::CrossDissolve => ("Cross Dissolve", "SMPTE_Dissolve"),
         crate::model::TransitionKind::SmoothCut => ("Smooth Cut", "Custom_Transition"),
+        crate::model::TransitionKind::Shadertoy(preset) => (preset.label(), "Custom_Transition"),
     };
     json!({
         "OTIO_SCHEMA": "Transition.1",

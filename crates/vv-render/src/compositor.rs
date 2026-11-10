@@ -898,6 +898,7 @@ pub struct Compositor {
     /// Built on first use: most projects never need it.
     smooth_cut: std::sync::OnceLock<crate::smooth_cut::SmoothCut>,
     pub shadertoy: crate::shadertoy::ShadertoyRunner,
+    pub shadertoy_transition: crate::shadertoy_transition::ShadertoyTransitionRunner,
     pub p5: crate::p5_canvas::P5Runner,
 }
 
@@ -1144,6 +1145,8 @@ impl Compositor {
         });
 
         let shadertoy = crate::shadertoy::ShadertoyRunner::new(&device, work.format);
+        let shadertoy_transition =
+            crate::shadertoy_transition::ShadertoyTransitionRunner::new(&device, work.format);
         let p5 = crate::p5_canvas::P5Runner::new(&device, work.format);
         let compositor = Self {
             device,
@@ -1160,6 +1163,7 @@ impl Compositor {
             adapter_name,
             smooth_cut: std::sync::OnceLock::new(),
             shadertoy,
+            shadertoy_transition,
             p5,
         };
         compositor.log_work_format();
@@ -1467,6 +1471,47 @@ impl Compositor {
                 &out,
                 progress,
             );
+        give_back(&mut self.scratch.lock().unwrap(), [a, b]);
+        PooledTexture {
+            texture: Some(out),
+            pool: Arc::clone(&self.scratch),
+        }
+    }
+
+    /// Renders a GPU shader transition between `from` and `to`.
+    pub fn render_shadertoy_transition_to_owned_texture(
+        &self,
+        from: &Layer,
+        to: &Layer,
+        preset: vv_core::ShadertoyTransitionPreset,
+        custom_params: Option<[f32; 8]>,
+        progress: f32,
+        output: OutputFrame,
+    ) -> PooledTexture {
+        let a = self.compose(std::slice::from_ref(from), output, TRANSPARENT);
+        let b = self.compose(std::slice::from_ref(to), output, TRANSPARENT);
+        let out = self.scratch_texture(output.width, output.height);
+        let a_view = a.create_view(&wgpu::TextureViewDescriptor::default());
+        let b_view = b.create_view(&wgpu::TextureViewDescriptor::default());
+        let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("vv-render shadertoy transition encoder"),
+            });
+        self.shadertoy_transition.render(
+            &self.device,
+            &mut encoder,
+            &self.sampler,
+            &out_view,
+            &a_view,
+            &b_view,
+            preset,
+            custom_params,
+            progress,
+            &output,
+        );
+        self.queue.submit(Some(encoder.finish()));
         give_back(&mut self.scratch.lock().unwrap(), [a, b]);
         PooledTexture {
             texture: Some(out),

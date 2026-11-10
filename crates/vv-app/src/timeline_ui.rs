@@ -5035,10 +5035,34 @@ pub(crate) fn paint_bracket_icon(
 
 /// Transitions of the Effects panel, in the order they appear there — see
 /// `FILTER_ENTRIES`, same idea.
-pub const ALL_TRANSITION_KINDS: [vv_core::TransitionKind; 3] = [
+pub const ALL_TRANSITION_KINDS: [vv_core::TransitionKind; 23] = [
     vv_core::TransitionKind::CrossDissolve,
     vv_core::TransitionKind::SmoothCut,
     vv_core::TransitionKind::Push,
+    // Level 1: Lineari e 1D
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::LinearCrossfade),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::LinearWipe),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::ColorFlashFade),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::RadialClockWipe),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::LumaMatteDissolve),
+    // Level 2: Deformazioni Geometriche 2D
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::PushSlide),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::IrisCircleOpen),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::ZoomScaleInOut),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::MosaicPixelate),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::CheckerboardGridWipe),
+    // Level 3: Deformazioni Continue e Rumore Procedurale
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::WaveSineDisplacement),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::SwirlTwirl),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::ChromaticAberrationSlide),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::PageCurl),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::SimplexNoiseBurn),
+    // Level 4: Multi-Tap, Convoluzioni e Simulazioni Pesanti
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::DirectionalMotionBlurWipe),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::ZoomRadialBlur),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::DigitalGlitchSpectralDrift),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::GlassPrismRefraction),
+    vv_core::TransitionKind::Shadertoy(vv_core::ShadertoyTransitionPreset::RaymarchedHeightfieldMorphing),
 ];
 
 pub fn transition_kind_label(kind: vv_core::TransitionKind) -> std::borrow::Cow<'static, str> {
@@ -5046,6 +5070,7 @@ pub fn transition_kind_label(kind: vv_core::TransitionKind) -> std::borrow::Cow<
         vv_core::TransitionKind::Push => t!("transition.push"),
         vv_core::TransitionKind::CrossDissolve => t!("transition.cross_dissolve"),
         vv_core::TransitionKind::SmoothCut => t!("transition.smooth_cut"),
+        vv_core::TransitionKind::Shadertoy(preset) => preset.label().into(),
     }
 }
 
@@ -5673,6 +5698,7 @@ fn apply_pending_action(
             // A Smooth Cut only bridges a few frames, as in Resolve.
             let seconds = match kind {
                 vv_core::TransitionKind::SmoothCut => 0.16,
+                vv_core::TransitionKind::Shadertoy(_) => 0.75,
                 _ => 0.45,
             };
             let default_duration =

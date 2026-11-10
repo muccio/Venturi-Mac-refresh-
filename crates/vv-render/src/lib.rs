@@ -5,6 +5,7 @@ pub mod compositor;
 pub mod p5_canvas;
 pub mod scopes;
 pub mod shadertoy;
+pub mod shadertoy_transition;
 mod smooth_cut;
 pub mod text;
 
@@ -15,6 +16,7 @@ pub use compositor::{
 pub use p5_canvas::{P5Runner, P5Uniforms};
 pub use scopes::{ScopeKind, Scopes};
 pub use shadertoy::{ShadertoyRunner, ShadertoyUniforms};
+pub use shadertoy_transition::{ShadertoyTransitionRunner, TransitionUniforms};
 /// Re-exported: whoever owns a texture for `LayerContent::Texture` must use the
 /// same wgpu version as the compositor.
 pub use wgpu;

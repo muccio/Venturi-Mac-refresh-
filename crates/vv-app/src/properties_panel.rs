@@ -1678,6 +1678,32 @@ impl VenturiApp {
             });
         }
 
+        if let vv_core::TransitionKind::Shadertoy(mut preset) = transition.kind {
+            ui.horizontal(|ui| {
+                ui.label("Preset");
+                let items: Vec<_> = vv_core::ShadertoyTransitionPreset::ALL
+                    .iter()
+                    .map(|p| (*p, format!("[L{}] {}", p.level(), p.label()), true))
+                    .collect();
+                if preview_combo(
+                    ui,
+                    "shadertoy_transition_preset",
+                    &mut preset,
+                    &items,
+                    None,
+                    None,
+                    None,
+                ) {
+                    transition.kind = vv_core::TransitionKind::Shadertoy(preset);
+                }
+            });
+            ui.label(
+                egui::RichText::new(preset.description())
+                    .small()
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
+
         ui.horizontal(|ui| {
             ui.label(t!("props.ease"));
             let items: Vec<_> = vv_core::Ease::ALL
